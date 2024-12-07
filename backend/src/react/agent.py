@@ -7,7 +7,7 @@ from src.llm.gemini import generate
 from src.config.logging import logger 
 from pydantic import BaseModel, Field
 from typing import Dict, List, Callable, Protocol
-from vertexai.generative_models import GeneralionModel, Part
+from vertexai.generative_models import GenerativeModel, Part
 from src.tools.serp import search as google_search
 # ... to be imported other tools (industry_report, competitor_analysis, dataset_search, brainstorm_use_cases, product_search, google_trends)
 
@@ -58,10 +58,10 @@ class Tool:
     """
     Tool class to represent a tool with its name, description, and function.
     """
-    def __init__(self, name: Name, description: str, func: Callable[[str], str]):
+    def __init__(self, name: Name, description: str, func: ToolFunction):
         self.name = name
         self.description = description
-        self.function = function
+        self.function = func
 
     def __str__(self) -> str:
         """
@@ -272,16 +272,21 @@ class Agent:
                     if "competitors" in observation:
                        competitor_analysis = f"Competitor Analysis: {observation.get('competitors')}\n"
 
-                except json.JSONDecodeError:
-                    pass # or handle non-json observations differently.
+                except json.JSONDecodeError as e:
+                     logger.error(f"Error parsing observation: {e}, Message: {message.content}") #Log details for debugging
+                     # Consider adding the raw observation to the final answer if parsing fails.
+                     industry_overview += f"Unparsed Observation: {message.content}\n"# or handle non-json observations differently.
 
 
-            elif message.role == "assistant" and "brainstormed_use_cases" in message.content:
+            elif message.role == "assistant":  # Check for brainstormed use cases
                 try:
-                   use_cases = json.loads(message.content)["brainstormed_use_cases"]
-                   potential_use_cases.extend(use_cases)
-                except (json.JSONDecodeError, KeyError):
-                    pass
+                   content = json.loads(message.content) # Parse the content 1st
+                   if "brainstormed_use_cases" in content: # Then check keys
+                       use_cases = content["brainstormed_use_cases"]
+                       potential_use_cases.extend(use_cases) # Add to the final output.
+
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.error(f"Error parsing assistant message: {e}, Message: {message.content}")
 
             final_answer = {
             "industry_overview": industry_overview,
@@ -291,7 +296,7 @@ class Agent:
         }
         self.trace("assistant", json.dumps({"answer": final_answer}, indent=2))
             
-    def execute(self, query: str) -> Union[Dict, str]:
+    def execute(self, query: str) -> Union[Dict[str,Any], str]:
         """
         Executes the agent query workflow.
 
@@ -346,7 +351,7 @@ class Agent:
             logger.exception(error_message) # Log the exception and traceback
             return error_message
         
-def run(query: str) -> str:
+def run(query: str) -> Dict[str, Any]:
     """
     Sets up the agent, registers tools, and executes a query.
 
@@ -356,6 +361,7 @@ def run(query: str) -> str:
     Returns:
         str: The agent's final answer.
     """
+    config = Config()
     gemini = GenerativeModel(config.MODEL_NAME)
 
     agent = Agent(model=gemini)
