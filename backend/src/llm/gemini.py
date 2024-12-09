@@ -3,11 +3,12 @@ from typing import Any
 from typing import List
 from typing import Optional
 from src.config.log_config import logger
-from vertexai.generative_models import HarmBlockThreshold
-from vertexai.generative_models import GenerationConfig
-from vertexai.generative_models import GenerativeModel
-from vertexai.generative_models import HarmCategory
-from vertexai.generative_models import Part
+from vertexai.language_models._language_models import TextGenerationModel  # Import the correct class
+from vertexai.generative_models._generative_models import GenerationConfig
+from vertexai.generative_models._generative_models import HarmBlockThreshold
+from vertexai.generative_models._generative_models import HarmCategory
+from vertexai.generative_models._generative_models import Part 
+
 def _create_generation_config() -> GenerationConfig:
     """
     Create a GenerationConfig object with the default values.
@@ -49,7 +50,7 @@ def _create_safety_settings() -> Dict[HarmCategory, HarmBlockThreshold]:
         raise
 
 
-def generate(model: GenerativeModel, contents: List[Part]) -> Optional[str]:
+def generate(model: TextGenerationModel, contents: List[Part]) -> Optional[str]:
     """
     Generate text using the given model and contents.
 

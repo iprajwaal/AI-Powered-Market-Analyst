@@ -1,4 +1,4 @@
 project_id: genai-prep
 credentials_json: /Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/credentials/key.json
 region: us-central1
-model_name: text-bison@001
+model_name: gemini-1.5-pro-001

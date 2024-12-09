@@ -5,8 +5,8 @@ import json
 from enum import Enum
 from typing import Callable, Dict, Union, Any, List, Protocol, Tuple
 # from src.utils.constants import Name # Import Name enum
-from vertexai.generative_models import GenerativeModel
-from vertexai.generative_models import Part
+from vertexai.language_models._language_models import TextGenerationModel
+from vertexai.generative_models._generative_models import Part
 from src.config.setup import Config
 from src.llm.gemini import generate
 
@@ -57,7 +57,7 @@ class Manager:
     """
     Manages the tools and their execution.
     """
-    def __init__(self, llm: GenerativeModel, tools: Dict[Name, Tool] = None, model: GenerativeModel = None) -> None:
+    def __init__(self, llm: TextGenerationModel, tools: Dict[Name, Tool] = None, model: TextGenerationModel = None) -> None:
         self.tools = tools or {}
         self.llm = llm
 
@@ -145,7 +145,7 @@ class Manager:
             parsed_response = json.loads(llm_response)
             tool_choice = parsed_response["tool"]  # Access the "tool" dictionary
 
-            if tool_choice["name"] == "none" or Name[tool_choice["name"].upper()] in available_tools:
+            if tool_choice["name"] == "none" or Name(tool_choice["name"]) in available_tools:
 
                 return Choice(name=Name[tool_choice["name"].upper()] if tool_choice["name"] != "none" else Name.NONE, 
                             reason=parsed_response["thought"], input=tool_choice["input"])
@@ -170,7 +170,7 @@ def run() -> None:
     """Demonstrates Manager and Tool usage with comprehensive tests."""
 
     config = Config()
-    gemini_model = GenerativeModel(config.MODEL_NAME)
+    gemini_model = TextGenerationModel.from_pretrained(config.MODEL_NAME)
 
     manager = Manager()
 

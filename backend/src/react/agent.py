@@ -7,11 +7,11 @@ from src.llm.gemini import generate
 from src.config.log_config import logger 
 from pydantic import BaseModel, Field
 from typing import Dict, List, Callable, Protocol, Union, Any
-from vertexai.generative_models import GenerativeModel, Part
+from vertexai.language_models._language_models import TextGenerationModel
+from vertexai.generative_models._generative_models import Part
 from src.tools.google_search import google_search
 from src.tools.manager import Manager
 import logging
-from vertexai.preview.language_models import TextGenerationModel
 # ... to be imported other tools (industry_report, competitor_analysis, dataset_search, brainstorm_use_cases, product_search, google_trends)
 
 Observation = Union[str, Exception]
@@ -89,7 +89,7 @@ class Agent:
     Agent class to represent an agent with a list of tools.
     """
 
-    def __init__(self, model: GenerativeModel, manager: Manager) -> None:
+    def __init__(self, model: TextGenerationModel, manager: Manager) -> None:
         """
         Initialize the Agent object with the given model, tools, and messages.
         
