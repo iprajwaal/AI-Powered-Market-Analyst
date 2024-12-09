@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 import json
 from typing import Callable, Dict, Union, Any, List, Protocol, Tuple
 # from src.utils.constants import Name # Import Name enum
-from vertexai.preview.language_models import TextGenerationModel  # For Gemini
+from vertexai.generative_models import GeneralionModel
 from src.config.setup import Config
 
 Observation = Union[str, Exception]
@@ -56,7 +56,7 @@ class Manager:
     """
     def __init__(self, tools: Dict[Name, Tool] = None) -> None:
         self.tools = tools or {}
-        self.model = TextGenerationModel(Config().MODEL_NAME) 
+        self.model = GeneralionModel(Config().MODEL_NAME) 
 
     def ask_llm(self, prompt: str) -> str:
         """
@@ -155,7 +155,7 @@ def run() -> None:
     """Demonstrates Manager and Tool usage with comprehensive tests."""
 
     config = Config()
-    gemini_model = TextGenerationModel(config.MODEL_NAME)
+    gemini_model = GeneralionModel(config.MODEL_NAME)
 
     manager = Manager(model = gemini_model)
 
