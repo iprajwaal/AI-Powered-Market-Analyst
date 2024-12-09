@@ -1,7 +1,8 @@
-from backend.src.config.logging import logger
-from backend.src.utils.io import load_yaml
+from src.config.log_config import logger
+from src.utils.io import load_yaml
 from serpapi import GoogleSearch
-from backend.src.config.setup import Config
+from src.config.setup import Config
+import logging
 from typing import Any
 from typing import Dict
 from typing import List
@@ -10,8 +11,8 @@ from typing import Tuple
 import requests
 import json
 
-config = Config()
-logger = logging.getLogger(__name__)
+# Static paths
+CREDENTIALS_PATH = '.backend/credentials/key.yml'
 
 def google_search(query: str, engine: str = "google", num_results: int = 10) -> str:
     """

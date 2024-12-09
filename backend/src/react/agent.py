@@ -1,15 +1,17 @@
 import os
 import json
 from enum import Enum, auto
-from src.utils.io import read_file
+from src.utils.io import read_file, write_to_file
 from src.config.setup import Config
 from src.llm.gemini import generate
-from src.config.logging import logger 
+from src.config.log_config import logger 
 from pydantic import BaseModel, Field
 from typing import Dict, List, Callable, Protocol, Union, Any
 from vertexai.generative_models import GenerativeModel, Part
-from backend.src.tools.google_search import google_search
-from backend.src.tools.manager import Manager
+from src.tools.google_search import google_search
+from src.tools.manager import Manager
+import logging
+from vertexai.preview.language_models import TextGenerationModel
 # ... to be imported other tools (industry_report, competitor_analysis, dataset_search, brainstorm_use_cases, product_search, google_trends)
 
 Observation = Union[str, Exception]
@@ -18,6 +20,7 @@ PROMPT_TEMPLATE_PATH = [
     "./data/react.txt",
     "./backend/data/react.txt"
 ]
+OUTPUT_TRACE_PATH = "/Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/data/output/trace.json"
 
 class Name(Enum):
     GOOGLE_SEARCH = auto()
@@ -37,9 +40,9 @@ class Name(Enum):
     
 class Choice(BaseModel):
     """
-    Choice of tools with a resone for the choice.
+    Choice of tools with a reason for the choice.
     """
-    name: Name = Field(..., description="Name of the tool chosen.")
+    name: str = Field(..., description="Name of the tool chosen.")
     reason: str = Field(..., description="Reason for choosing the tool.")
 
 class Message(BaseModel):
@@ -48,9 +51,6 @@ class Message(BaseModel):
     """
     role: str = Field(..., description="Role of the sender.")
     content: str = Field(..., description="Content of the message.")
-
-logger.basicConfig(level=logger.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 class ToolFunction(Protocol):  # Protocol for Tool function type
     def __call__(self, query: str) -> Observation: ...
@@ -89,12 +89,12 @@ class Agent:
     Agent class to represent an agent with a list of tools.
     """
 
-    def __init__(self, model: GenerativeModel) -> None:
+    def __init__(self, model: GenerativeModel, manager: Manager) -> None:
         """
         Initialize the Agent object with the given model, tools, and messages.
         
         Args:
-            model (GeneralionModel): The model to use for text generation.
+            model (GenerativeModel): The model to use for text generation.
         """
         self.model = model
         self.tools: Dict[Name, Tool] = {}
@@ -144,6 +144,7 @@ class Agent:
         """
         if role != "system":
             self.messages.append(Message(role=role, content=content))
+        write_to_file(path = OUTPUT_TRACE_PATH, content = f'{role}: {content}\n')
 
     def get_history(self) -> str:
         """
@@ -159,6 +160,7 @@ class Agent:
 
         self.current_iteration += 1
         logger.info(f"Thinking iteration {self.current_iteration}...")
+        write_to_file(path = OUTPUT_TRACE_PATH, content = f"\n{'='*50}\nThinking iteration {self.current_iteration}\n{'='*50}\n")
 
         if self.current_iteration >= self.max_iterations:
             logger.info("Max iterations reached. Stopping!")
@@ -166,36 +168,36 @@ class Agent:
             return
 
         # Get available tools (excluding BRAINSTORM_USE_CASES)
-        available_tools = [tool.name for tool in self.tools.values() if tool.name != Name.BRAINSTORM_USE_CASES]
+        available_tool_names = [tool_name for tool_name in self.tools if tool_name != Name.BRAINSTORM_USE_CASES]
 
         try:
-            choice = self.manager.choose(self.query, available_tools, self.get_history())
+            choice = self.manager.choose(self.query, available_tool_names, self.get_history())
 
             if choice.name == Name.NONE:
                 if self.current_iteration >= self.min_iterations:
                     self.generate_final_answer()  # Generate final answer if no tool is chosen and min iterations reached
-                    return # Exit after generating final answer
+                    return  # Exit after generating final answer
                 else:
                     self.trace("assistant", "Thought: I need more information before finalizing.")
                     # Force tool usage if below minimum iteration count.
-                    if available_tools: # Check if any tools are available (besides brainstorm & none)
+                    if available_tool_names:  # Check if any tools are available (besides brainstorm & none)
                         # Randomly select a tool to encourage exploration if LLM gets stuck.
-                        choice = self.manager.force_tool_use(available_tools, self.get_history())  # Create this method in Manager
+                        choice = self.manager.force_tool_use(available_tool_names, self.get_history())  # Create this method in Manager
                     else:
-                        self.generate_final_answer() # No other tools to use, so finalize.
+                        self.generate_final_answer()  # No other tools to use, so finalize.
                         return
-
 
             elif choice.name == Name.BRAINSTORM_USE_CASES:  # Correctly use choice.name
                 self.brainstorm(choice.input)
 
             else:  # Standard tool usage
-                self.act(choice) # Corrected: pass the Choice object
+                self.act(choice)  # Corrected: pass the Choice object
 
         except ValueError as e:  # Handle exceptions during tool selection
             logger.error(f"Error choosing or using tool: {e}")
             self.trace("system", f"Error: {e}")
             self.think()  # Try again on the next iteration
+
 
     def decide(self, response: str) -> None:
         """
@@ -417,9 +419,10 @@ def run(query: str) -> Dict[str, Any]:
         str: The agent's final answer.
     """
     config = Config()
-    gemini = GenerativeModel(config.MODEL_NAME)
+    gemini_model = TextGenerationModel.from_pretrained(config.MODEL_NAME)
+    manager = Manager(llm=gemini_model)
 
-    agent = Agent(model=gemini)
+    agent = Agent(model=gemini_model, manager=manager)
     agent.register(Name.GOOGLE_SEARCH, "Performs a Google search.", google_search)
     # agent.register(Name.INDUSTRY_REPORT, industry_report_tool)  # Your tool function
     # agent.register(Name.COMPETITOR_ANALYSIS, competitor_analysis_tool)  # Your tool function

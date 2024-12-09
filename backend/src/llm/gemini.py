@@ -2,21 +2,21 @@ from typing import Dict
 from typing import Any
 from typing import List
 from typing import Optional
-from src.config.logging import logger
+from src.config.log_config import logger
 from vertexai.generative_models import HarmBlockThreshold
-from vertexai.generative_models import GeneralionConfig
-from vertexai.generative_models import GeneralionModel
+from vertexai.generative_models import GenerationConfig
+from vertexai.generative_models import GenerativeModel
 from vertexai.generative_models import HarmCategory
 from vertexai.generative_models import Part
-def _create_generation_config() -> GeneralionConfig:
+def _create_generation_config() -> GenerationConfig:
     """
-    Create a GeneralionConfig object with the default values.
+    Create a GenerationConfig object with the default values.
 
     Returns:
-        GeneralionConfig: The GeneralionConfig object.
+        GenerationConfig: The GenerationConfig object.
     """
     try:
-        gen_config = GeneralionConfig(
+        gen_config = GenerationConfig(
             temperature = 0.0,
             top_k = 1.0,
             candidate_count = 1,
@@ -25,7 +25,7 @@ def _create_generation_config() -> GeneralionConfig:
         )
         return gen_config
     except Exception as e:
-        logger.error(f"Error creating GeneralionConfig object: {e}")
+        logger.error(f"Error creating GenerationConfig object: {e}")
         raise
 
 def _create_safety_settings() -> Dict[HarmCategory, HarmBlockThreshold]:
@@ -38,11 +38,10 @@ def _create_safety_settings() -> Dict[HarmCategory, HarmBlockThreshold]:
     try:
         safety_settings = {
             HarmCategory.HARM_CATEGORY_UNSPECIFIED: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_SEXUAL_CONTENT: HarmBlockThreshold.BLOCK_ALL,
-            HarmCategory.HARM_CATEGORY_VIOLENCE: HarmBlockThreshold.BLOCK_ALL,
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ALL,
-            HarmCategory.HARM_CATEGORY_ILLEGAL_CONTENT: HarmBlockThreshold.BLOCK_ALL,
-            HarmCategory.HARM_CATEGORY_MEDICAL_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE
         }
         return safety_settings
     except Exception as e:
@@ -50,12 +49,12 @@ def _create_safety_settings() -> Dict[HarmCategory, HarmBlockThreshold]:
         raise
 
 
-def generate(model: GeneralionModel, contents: List[Part]) -> Optional[str]:
+def generate(model: GenerativeModel, contents: List[Part]) -> Optional[str]:
     """
     Generate text using the given model and contents.
 
     Args:
-        model (GeneralionModel): The model to use for text generation.
+        model (GenerativeModel): The model to use for text generation.
         contents (List[Part]): The contents to use for text generation.
 
     Returns:
@@ -63,7 +62,7 @@ def generate(model: GeneralionModel, contents: List[Part]) -> Optional[str]:
     """
     try:
         logger.info("Generating text from Gemini...")
-        response = model.generate_contents(
+        response = model.generate_content(
             contents=contents,
             generation_config=_create_generation_config(),
             safety_settings=_create_safety_settings()
@@ -78,3 +77,4 @@ def generate(model: GeneralionModel, contents: List[Part]) -> Optional[str]:
     except Exception as e:
         logger.error(f"Error generating text: {e}")
         return None
+    

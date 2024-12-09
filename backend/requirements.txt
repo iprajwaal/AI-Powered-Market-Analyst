@@ -51,7 +51,7 @@ mdurl==0.1.2
 mypy-extensions==1.0.0
 narwhals==1.13.3
 nest-asyncio==1.6.0
-numpy==1.26.4
+numpy
 opentelemetry-api==1.28.0
 opentelemetry-exporter-otlp==1.28.0
 opentelemetry-exporter-otlp-proto-common==1.28.0

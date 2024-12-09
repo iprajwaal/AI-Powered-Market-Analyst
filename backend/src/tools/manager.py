@@ -1,11 +1,14 @@
 from src.tools import *  # Import all your tool functions
-from src.config.logging import logger
+from src.config.log_config import logger
 from pydantic import BaseModel, Field
 import json
+from enum import Enum
 from typing import Callable, Dict, Union, Any, List, Protocol, Tuple
 # from src.utils.constants import Name # Import Name enum
-from vertexai.generative_models import GeneralionModel
+from vertexai.generative_models import GenerativeModel
+from vertexai.generative_models import Part
 from src.config.setup import Config
+from src.llm.gemini import generate
 
 Observation = Union[str, Exception]
 class Name(Enum):
@@ -54,17 +57,29 @@ class Manager:
     """
     Manages the tools and their execution.
     """
-    def __init__(self, tools: Dict[Name, Tool] = None) -> None:
+    def __init__(self, llm: GenerativeModel, tools: Dict[Name, Tool] = None, model: GenerativeModel = None) -> None:
         self.tools = tools or {}
-        self.model = GeneralionModel(Config().MODEL_NAME) 
+        self.llm = llm
 
     def ask_llm(self, prompt: str) -> str:
         """
         Mock function to simulate interaction with an LLM.
         Replace this with the actual implementation.
         """
-        response = self.model.generate(prompt)
-        return response
+        try:
+            # Convert prompt to Part(s) (assuming Part is a simple text container)
+            contents = [Part.from_text(prompt)]  # Assuming Part has a 'text' attribute
+            response = generate(self.model, contents)  # Call the custom generate function
+
+            if response is None:
+                logger.error("LLM generation failed.")
+                raise ValueError("LLM generation failed.")
+            
+            return response
+        
+        except Exception as e:
+            logger.error(f"Error interacting with LLM: {e}")
+            raise
 
     def register(self, name: Name, description: str, func: ToolFunction) -> None:
         """ 
@@ -100,7 +115,7 @@ class Manager:
     def choose(self, query: str, available_tools: List[Name], context: str = "") -> Choice:
         """Chooses the best tool using the LLM."""
 
-        tools_string = ", ".join(tool.name.lower().replace("_", " ") for tool in available_tools)
+        tools_string = ", ".join([tool.name.lower().replace("_", " ") for tool in available_tools])
 
         prompt = f"""You are a helpful AI assistant. Choose the best tool to answer the following query.
         Query: {query}
@@ -155,9 +170,9 @@ def run() -> None:
     """Demonstrates Manager and Tool usage with comprehensive tests."""
 
     config = Config()
-    gemini_model = GeneralionModel(config.MODEL_NAME)
+    gemini_model = GenerativeModel(config.MODEL_NAME)
 
-    manager = Manager(model = gemini_model)
+    manager = Manager()
 
     def mock_google_search(query: str) -> str:
          return json.dumps({"search_results": f"Results for {query}"})

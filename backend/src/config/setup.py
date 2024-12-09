@@ -1,120 +1,64 @@
-import os
-import yaml
-from typing import Any
+from src.config.log_config import logger
 from typing import Dict
-from src.config.logging import logger
+from typing import Any
+import yaml
+import os
+
 
 class Config:
     _instance = None
 
     def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
+        if not cls._instance:
             cls._instance = super(Config, cls).__new__(cls)
-            cls._instance._config = cls._instance._load_config()
+            # The following line ensures that the __init__ method is only called once.
+            cls._instance.__initialized = False
         return cls._instance
     
-    def __init__(self, config_path: str = "None"):
+    def __init__(self, config_path: str = "/Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/config/config.yml"):
         """
-        Initialize the Config object with the path to the config file.
+        Initialize the Config class.
 
         Args:
-            config_path (str, optional): Path to the YAML config file. Defaults to "None".
+        - config_path (str): Path to the YAML configuration file.
         """
-
         if self.__initialized:
             return
         self.__initialized = True
+        
+        self.__config = self._load_config(config_path)
+        self.PROJECT_ID = self.__config['project_id']
+        self.REGION = self.__config['region']
+        self.CREDENTIALS_PATH = self.__config['credentials_json']
+        self._set_google_credentials(self.CREDENTIALS_PATH)
+        self.MODEL_NAME = self.__config['model_name']
 
-        config_path = config_path or self._find_config_path()
-        logger.info(f"Loading config from {config_path}")
-
-        self._config = self._load_config(config_path)
-        if self._config:
-            self.PROJECT_ID = self._config.get("project_id")
-            self.REGION = self._config.get("region")
-            self.CREDENTIALS_PATH = self._config.get("credentials_path")
-            self.MODEL_NAME = self._config.get("model_name")
-
-            if self.CREDENTIALS_PATH:
-                self._set_google_credentials(self.CREDENTIALS_PATH)
-            else:
-                logger.warning("No credentials path provided in config.")
-        else:
-            logger.error("No config loaded. Please check the file path.")
-
-    @staticmethod
-    def _find_config_path() -> str:
-        """
-        Find the path to the config file.
-
-        Returns:
-            str: Path to the config file.
-        """
-        possible_paths = [
-            os.path.abspath("./backend/config/config.yaml"),
-            os.path.abspath("./config/config.yaml"),
-        ]
-        for path in possible_paths:
-            if os.path.exists(path):
-                logger.info(f"Found config file at {path}")
-                return path
-            
-        logger.error("No config file found in any default location.")
-        raise FileNotFoundError("No config file found in any default location.")
-    
-    @staticmethod
-    def _find_credentials_path() -> str:
-        """
-        Find the path to the credentials file.
-
-        Returns:
-            str: Path to the credentials file.
-        """
-        possible_paths = [
-            os.path.abspath("./backend/config/key.json"),
-            os.path.abspath("./config/key.json"),
-        ]
-        for path in possible_paths:
-            if os.path.exists(path):
-                logger.info(f"Found credentials file at {path}")
-                return path
-            
-        logger.error("No credentials file found in any default location.")
-        raise FileNotFoundError("No credentials file found in any default location.")
-    
     @staticmethod
     def _load_config(config_path: str) -> Dict[str, Any]:
         """
-        Load the config file.
+        Load the YAML configuration from the given path.
 
         Args:
-            config_path (str): Path to the config file.
+        - config_path (str): Path to the YAML configuration file.
 
         Returns:
-            Dict[str, Any]: The config file as a dictionary.
+        - dict: Loaded configuration data.
         """
         try:
-            with open(config_path, "r") as file:
+            with open(config_path, 'r') as file:
                 return yaml.safe_load(file)
-        except FileNotFoundError:
-            logger.error(f"Config file not found at {config_path}")
-            return None
-        except yaml.YAMLError as e:
-            logger.error(f"Error loading config file: {e}")
-            return None
-        
+        except Exception as e:
+            logger.error(f"Failed to load the configuration file. Error: {e}")
+
     @staticmethod
     def _set_google_credentials(credentials_path: str) -> None:
         """
-        Set the Google credentials environment variable.
+        Set the Google application credentials environment variable.
 
         Args:
-            credentials_path (str): Path to the credentials file.
+        - credentials_path (str): Path to the Google credentials file.
         """
-        if os.path.exists(credentials_path):
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
-            logger.info("Google credentials set from {credentials_path}")
-        else:
-            logger.error(f"Credentials file not found at {credentials_path} Google credentials not set.")
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+
 
 config = Config()
