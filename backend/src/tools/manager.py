@@ -125,7 +125,7 @@ class Manager:
 
         """
 
-        llm_response = self.ask_llm(prompt)  # Replace with your actual LLM interaction code
+        llm_response = self.ask_llm(prompt)
         try:
             parsed_response = json.loads(llm_response)
             tool_choice = parsed_response["tool"]  # Access the "tool" dictionary

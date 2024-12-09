@@ -6,10 +6,10 @@ from src.config.setup import Config
 from src.llm.gemini import generate
 from src.config.logging import logger 
 from pydantic import BaseModel, Field
-from typing import Dict, List, Callable, Protocol
+from typing import Dict, List, Callable, Protocol, Union, Any
 from vertexai.generative_models import GenerativeModel, Part
-from src.tools.serp import search as google_search
-from src.tools.manager import Manager
+from backend.src.tools.google_search import google_search
+from backend.src.tools.manager import Manager
 # ... to be imported other tools (industry_report, competitor_analysis, dataset_search, brainstorm_use_cases, product_search, google_trends)
 
 Observation = Union[str, Exception]
@@ -20,7 +20,7 @@ PROMPT_TEMPLATE_PATH = [
 ]
 
 class Name(Enum):
-    GOOGLE = auto()
+    GOOGLE_SEARCH = auto()
     INDUSTRY_REPORT = auto()
     COMPETITOR_ANALYSIS = auto()
     DATASET_SEARCH = auto()
@@ -255,35 +255,58 @@ class Agent:
             self.trace("assistant", "I encountered an error while brainstorming use cases.Let me try another approach.")
             self.think()
 
-    def act(self, tool_name: Name, query: str) -> None:
-        """Executes the chosen tool and processes the result."""
+    def act(self, choice: Choice) -> None:
+        """
+        Executes the chosen tool and processes the result.
+        
+        Args:
+            choice (Choice): The choice of tool to act on.
+            
+        Returns:
+            None
+        """
 
+        tool_name = choice.name
+        query = choice.input 
         tool = self.tools.get(tool_name)
         if not tool:
             logger.error(f"No tool registered for: {tool_name}")
             self.trace("system", f"Error: Tool {tool_name} not found")
             self.think()
-            return 
-
-        result = tool.use(query)
+            return
 
         try:
-            observation = json.loads(result)
+            result = tool.use(query)
 
-            if "error" in observation: 
-                error_message = observation.get("error")
-                self.trace("system", f"Tool {tool_name} returned an error: {error_message}")
-                self.think()
+            if isinstance(result, tuple):
+                status_code, error_message = result
+                observation = {"error": f"Tool {tool_name} failed with status {status_code}: {error_message}"}
+                
+            elif isinstance(result, dict):
+                observation = result
+            elif isinstance(result, str):
+                try:
+                    observation = json.loads(result)
+                except json.JSONDecodeError as e:
+                    observation = {"error": f"Invalid JSON from {tool_name}: {e}", "raw_output": result}
 
             else:
-                observation_message = f"Observation from {tool_name}: {json.dumps(observation, indent=2)}"
-                self.trace("system", observation_message)
-                self.messages.append(Message(role="system", content=json.dumps(observation)))
-                self.think()
+                observation = {"error": f"Unexpected tool output type: {type(result)}", "raw_output": result}
 
-        except json.JSONDecodeError as e:
-            error_message = f"Error parsing JSON from {tool_name}: {e}. Raw output: {result}"
-            logger.error(error_message)
+            observation_message = f"Observation from {tool_name}: {json.dumps(observation, indent=2)}"
+            self.trace("system", observation_message) 
+
+            self.messages.append(Message(role="system", content=json.dumps(observation))) # Store the JSON string.
+
+
+            if "error" in observation:
+                self.think()
+            else:
+                 self.think()
+
+        except Exception as e:
+            error_message = f"Unexpected error using {tool_name}: {e}"
+            logger.exception(error_message) # Log the full exception
             self.trace("system", error_message)
             self.think()
 
@@ -397,7 +420,7 @@ def run(query: str) -> Dict[str, Any]:
     gemini = GenerativeModel(config.MODEL_NAME)
 
     agent = Agent(model=gemini)
-    agent.register(Name.GOOGLE, google_search)
+    agent.register(Name.GOOGLE_SEARCH, "Performs a Google search.", google_search)
     # agent.register(Name.INDUSTRY_REPORT, industry_report_tool)  # Your tool function
     # agent.register(Name.COMPETITOR_ANALYSIS, competitor_analysis_tool)  # Your tool function
     # agent.register(Name.DATASET_SEARCH, dataset_search_tool) # Your tool function
