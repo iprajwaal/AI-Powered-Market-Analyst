@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, List, Callable, Protocol
 from vertexai.generative_models import GenerativeModel, Part
 from src.tools.serp import search as google_search
+from src.tools.manager import Manager
 # ... to be imported other tools (industry_report, competitor_analysis, dataset_search, brainstorm_use_cases, product_search, google_trends)
 
 Observation = Union[str, Exception]
@@ -88,7 +89,7 @@ class Agent:
     Agent class to represent an agent with a list of tools.
     """
 
-    def __init__(self, model: GeneralionModel) -> None:
+    def __init__(self, model: GenerativeModel) -> None:
         """
         Initialize the Agent object with the given model, tools, and messages.
         
@@ -103,6 +104,7 @@ class Agent:
         self.current_iteration = 0
         self.min_iterations = 5
         self.template = self._load_template()
+        self.manager = Manager
 
     def _load_template(self) -> str:
         """
@@ -153,27 +155,47 @@ class Agent:
         return "\n".join([f"{m.role}: {m.content}" for m in self.messages])
     
     def think(self) -> None:
-        """
-        Processes the current query, decides action, and iterates until a salution or max iteration limit is reached.
-        """
+        """Main reasoning loop."""
+
         self.current_iteration += 1
         logger.info(f"Thinking iteration {self.current_iteration}...")
 
         if self.current_iteration >= self.max_iterations:
             logger.info("Max iterations reached. Stopping!")
-            self.trace("assistance", "I couldn't find a complete answer, but here's what I've gathered:" + self.get_history())
+            self.generate_final_answer()  # Generate final answer even if max iterations reached
             return
-        
-        prompt = self.template.format(
-            query=self.query,
-            history=self.get_history(),
-            tools=", ".join([str(tool) for tool in self.tools.values()])
-        )
 
-        response = self.ask_gemini(prompt)
-        logger.info(f"Thinking => {response}")
-        self.trace("assistance", f"Thought: {response}")
-        self.decide(response)
+        # Get available tools (excluding BRAINSTORM_USE_CASES)
+        available_tools = [tool.name for tool in self.tools.values() if tool.name != Name.BRAINSTORM_USE_CASES]
+
+        try:
+            choice = self.manager.choose(self.query, available_tools, self.get_history())
+
+            if choice.name == Name.NONE:
+                if self.current_iteration >= self.min_iterations:
+                    self.generate_final_answer()  # Generate final answer if no tool is chosen and min iterations reached
+                    return # Exit after generating final answer
+                else:
+                    self.trace("assistant", "Thought: I need more information before finalizing.")
+                    # Force tool usage if below minimum iteration count.
+                    if available_tools: # Check if any tools are available (besides brainstorm & none)
+                        # Randomly select a tool to encourage exploration if LLM gets stuck.
+                        choice = self.manager.force_tool_use(available_tools, self.get_history())  # Create this method in Manager
+                    else:
+                        self.generate_final_answer() # No other tools to use, so finalize.
+                        return
+
+
+            elif choice.name == Name.BRAINSTORM_USE_CASES:  # Correctly use choice.name
+                self.brainstorm(choice.input)
+
+            else:  # Standard tool usage
+                self.act(choice) # Corrected: pass the Choice object
+
+        except ValueError as e:  # Handle exceptions during tool selection
+            logger.error(f"Error choosing or using tool: {e}")
+            self.trace("system", f"Error: {e}")
+            self.think()  # Try again on the next iteration
 
     def decide(self, response: str) -> None:
         """
@@ -234,39 +256,49 @@ class Agent:
             self.think()
 
     def act(self, tool_name: Name, query: str) -> None:
-        """
-        Execute the tool with the given name and query.
+        """Executes the chosen tool and processes the result."""
 
-        Args:
-            tool_name (Name): The name of the tool to execute.
-            query (str): The query to provide to the tool.
-        """
         tool = self.tools.get(tool_name)
-        if tool:
-            result = tool.use(query)
-            Observation = f"Observation from {tool_name}: {result}"
-            self.trace("system", Observation)
-            self.messages.append(Message(role="system", content=Observation))
-            self.think()
-        else:
-            logger.error(f"No tool registered for choice {tool_name}")
+        if not tool:
+            logger.error(f"No tool registered for: {tool_name}")
             self.trace("system", f"Error: Tool {tool_name} not found")
+            self.think()
+            return 
+
+        result = tool.use(query)
+
+        try:
+            observation = json.loads(result)
+
+            if "error" in observation: 
+                error_message = observation.get("error")
+                self.trace("system", f"Tool {tool_name} returned an error: {error_message}")
+                self.think()
+
+            else:
+                observation_message = f"Observation from {tool_name}: {json.dumps(observation, indent=2)}"
+                self.trace("system", observation_message)
+                self.messages.append(Message(role="system", content=json.dumps(observation)))
+                self.think()
+
+        except json.JSONDecodeError as e:
+            error_message = f"Error parsing JSON from {tool_name}: {e}. Raw output: {result}"
+            logger.error(error_message)
+            self.trace("system", error_message)
             self.think()
 
     def generate_final_answer(self) -> None:
         """Generates the final structured answer."""
-        # Use the collected information in self.messages to construct the final answer
 
-        # Example logic (adapt as needed):
         industry_overview = ""
         competitor_analysis = ""
         potential_use_cases = []
 
         for message in self.messages:
-            if message.role == "system": # Observations
+            if message.role == "system": 
                 try:
                     observation = json.loads(message.content)
-                    if "report_links" in observation:  # Example from Industry report tool
+                    if "report_links" in observation:
                         industry_overview += f"Industry Report Links: {observation['report_links']}\n"
                     # ... (process observations from other tools similarly)
                     if "competitors" in observation:
