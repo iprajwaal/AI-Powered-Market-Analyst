@@ -11,18 +11,22 @@
    python -m venv .venv
    source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
    ```
+3. **Install Dependencies** 📦
 
-3. Install Poetry (if not already installed):
+    ```bash
+    pip install -r requirements.txt
+    ```
+4. Install Poetry (if not already installed):
    ```
    pip install poetry
    ```
 
-4. Install project dependencies:
+5. Install project dependencies:
    ```
    poetry install
    ```
 
-5. Set up environment variables:
+6. Set up environment variables:
    ```
    export PYTHONDONTWRITEBYTECODE=1
    export PYTHONPATH=$PYTHONPATH:.
