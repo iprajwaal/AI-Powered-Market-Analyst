@@ -26,7 +26,7 @@ class Choice(BaseModel):
     """
     name: Name = Field(...)
     reason: str = Field(...)
-    input: str = Field(...)  # Tool input
+    input: str = Field(...) 
 
 class ToolFunction(Protocol):  # Protocol for Tool function type
     def __call__(self, query: str) -> Union[str, Tuple[int, str]]: ...
@@ -67,9 +67,9 @@ class Manager:
         Replace this with the actual implementation.
         """
         try:
-            # Convert prompt to Part(s) (assuming Part is a simple text container)
-            contents = [Part.from_text(prompt)]  # Assuming Part has a 'text' attribute
-            response = generate(self.model, contents)  # Call the custom generate function
+           
+            contents = [Part.from_text(prompt)] 
+            response = generate(self.model, contents) 
 
             if response is None:
                 logger.error("LLM generation failed.")
@@ -105,10 +105,10 @@ class Manager:
         try:
             parsed_result = json.loads(tool_result)
             logged_result = json.dumps(parsed_result, indent=2)
-        except (json.JSONDecodeError, TypeError): # Handle non-JSON or errors.
+        except (json.JSONDecodeError, TypeError): 
              logged_result = tool_result
 
-        logger.info(f"Tool {choice.name} returned: {logged_result}") #Detailed result logs.
+        logger.info(f"Tool {choice.name} returned: {logged_result}") 
         return tool_result
 
 
@@ -143,7 +143,7 @@ class Manager:
         llm_response = self.ask_llm(prompt)
         try:
             parsed_response = json.loads(llm_response)
-            tool_choice = parsed_response["tool"]  # Access the "tool" dictionary
+            tool_choice = parsed_response["tool"] 
 
             if tool_choice["name"] == "none" or Name(tool_choice["name"]) in available_tools:
 
@@ -151,7 +151,7 @@ class Manager:
                             reason=parsed_response["thought"], input=tool_choice["input"])
             else:
                 logger.warning(f"Invalid tool choice from LLM: {tool_choice['name']}")
-                raise ValueError("Invalid tool name or tool not available.") #Handle appropriately.
+                raise ValueError("Invalid tool name or tool not available.") 
 
         except (KeyError, json.JSONDecodeError) as e:
             logger.error(f"Invalid LLM response: {llm_response}, error: {e}")
@@ -162,7 +162,7 @@ class Manager:
 
         chosen_tool = random.choice(available_tools)
         thought = f"I am forcing use of {chosen_tool} to gather more information."
-        input_query = f"Using {chosen_tool}, related to {context}" # Or other suitable input.  Could be original query.
+        input_query = f"Using {chosen_tool}, related to {context}"
         return Choice(name = chosen_tool, reason=thought, input= input_query)
 
 
@@ -203,17 +203,17 @@ def run() -> None:
 
     for query, available_tools, context in test_cases:
 
-        logger.info(f"Test Case: {query}") # Separate test case logs.
+        logger.info(f"Test Case: {query}")
 
         try:
-            choice = manager.choose(query, available_tools, context)  # Use available_tools
-            if choice.name != Name.NONE: # Only call act() if a tool is chosen.
+            choice = manager.choose(query, available_tools, context)  
+            if choice.name != Name.NONE:
 
                 result = manager.act(choice)
                 logger.info(f"Tool: {choice.name},  Result: {result}")
 
             else:
-               logger.info("No tool chosen by LLM.") # Log this explicitly
+               logger.info("No tool chosen by LLM.") 
 
 
         except ValueError as e:

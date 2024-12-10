@@ -76,13 +76,13 @@ class Tool:
         log = logger.getLogger(__name__)
         try:
             log.info(f"Using tool {self.name} with query: {query}")
-            result = self.func(query)  # Use self.func consistently
+            result = self.func(query) 
             log.debug(f"Tool {self.name} returned: {result}")
             return result
 
-        except Exception as e:  # Or handle more specific exceptions
-            log.exception(f"Error executing tool {self.name}: {e}") # Log the exception
-            return f"Error in {self.name}: {e}" # Return an informative error message
+        except Exception as e:  
+            log.exception(f"Error executing tool {self.name}: {e}")
+            return f"Error in {self.name}: {e}"
 
 class Agent:
     """
@@ -164,7 +164,7 @@ class Agent:
 
         if self.current_iteration >= self.max_iterations:
             logger.info("Max iterations reached. Stopping!")
-            self.generate_final_answer()  # Generate final answer even if max iterations reached
+            self.generate_final_answer()
             return
 
         # Get available tools (excluding BRAINSTORM_USE_CASES)
@@ -175,19 +175,19 @@ class Agent:
 
             if choice.name == Name.NONE:
                 if self.current_iteration >= self.min_iterations:
-                    self.generate_final_answer()  # Generate final answer if no tool is chosen and min iterations reached
-                    return  # Exit after generating final answer
+                    self.generate_final_answer()  
+                    return 
                 else:
                     self.trace("assistant", "Thought: I need more information before finalizing.")
-                    # Force tool usage if below minimum iteration count.
-                    if available_tool_names:  # Check if any tools are available (besides brainstorm & none)
-                        # Randomly select a tool to encourage exploration if LLM gets stuck.
-                        choice = self.manager.force_tool_use(available_tool_names, self.get_history())  # Create this method in Manager
+            
+                    if available_tool_names:
+            
+                        choice = self.manager.force_tool_use(available_tool_names, self.get_history())
                     else:
-                        self.generate_final_answer()  # No other tools to use, so finalize.
+                        self.generate_final_answer() 
                         return
 
-            elif choice.name == Name.BRAINSTORM_USE_CASES:  # Correctly use choice.name
+            elif choice.name == Name.BRAINSTORM_USE_CASES: 
                 self.brainstorm(choice.input)
 
             else:  # Standard tool usage

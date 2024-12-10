@@ -3,7 +3,7 @@ from typing import Any
 from typing import List
 from typing import Optional
 from src.config.log_config import logger
-from vertexai.language_models._language_models import TextGenerationModel  # Import the correct class
+from vertexai.language_models._language_models import TextGenerationModel
 from vertexai.generative_models._generative_models import GenerationConfig
 from vertexai.generative_models._generative_models import HarmBlockThreshold
 from vertexai.generative_models._generative_models import HarmCategory
