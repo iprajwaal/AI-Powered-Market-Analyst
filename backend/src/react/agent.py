@@ -6,13 +6,18 @@ from src.config.setup import Config
 from src.llm.gemini import generate
 from src.config.log_config import logger 
 from pydantic import BaseModel, Field
-from typing import Dict, List, Callable, Protocol, Union, Any
+from typing import Dict, List, Callable, Protocol, Union, Any, Optional
 from vertexai.language_models._language_models import TextGenerationModel
 from vertexai.generative_models._generative_models import Part
 from src.tools.google_search import google_search
+from src.tools.industry_report import industry_report_search as industry_report_tool
+from src.tools.competitor_analysis import competitor_analysis as competitor_analysis_tool
+from src.tools.dataset_search import dataset_search as dataset_search_tool
+from src.tools.product_search import search_google_products
+from src.tools.google_trends import search_google_trends
 from src.tools.manager import Manager
 import logging
-# ... to be imported other tools (industry_report, competitor_analysis, dataset_search, brainstorm_use_cases, product_search, google_trends)
+from src.react.constants import Name 
 
 Observation = Union[str, Exception]
 
@@ -89,7 +94,7 @@ class Agent:
     Agent class to represent an agent with a list of tools.
     """
 
-    def __init__(self, model: TextGenerationModel, manager: Manager) -> None:
+    def __init__(self, model: TextGenerationModel, manager: Optional[Manager] = None) -> None:
         """
         Initialize the Agent object with the given model, tools, and messages.
         
@@ -98,7 +103,8 @@ class Agent:
         """
         self.model = model
         self.tools: Dict[Name, Tool] = {}
-        self.messages: List[Message] = []
+        self.messages = manager or Manager(llm=model, model=model)
+        self.tools: Dict[Name, Tool] = {}
         self.query = ""
         self.max_iterations = 15
         self.current_iteration = 0
@@ -132,7 +138,9 @@ class Agent:
             description (str): The description of the tool.
             function (ToolFunction): The function of the tool.
         """
-        self.tools[name] = Tool(name, description, function)
+        tool = Tool(name, description, function)
+        self.tools[name] = tool
+        self.manager.tools[name] = tool
 
     def trace(self, role: str, content: str) -> None:
         """
@@ -168,10 +176,10 @@ class Agent:
             return
 
         # Get available tools (excluding BRAINSTORM_USE_CASES)
-        available_tool_names = [tool_name for tool_name in self.tools if tool_name != Name.BRAINSTORM_USE_CASES]
+        available_tools = [self.tools[tool_name] for tool_name in self.tools if tool_name != Name.BRAINSTORM_USE_CASES]
 
         try:
-            choice = self.manager.choose(self.query, available_tool_names, self.get_history())
+            choice = self.manager.choose(self.query, available_tools, self.get_history())
 
             if choice.name == Name.NONE:
                 if self.current_iteration >= self.min_iterations:
@@ -180,9 +188,9 @@ class Agent:
                 else:
                     self.trace("assistant", "Thought: I need more information before finalizing.")
             
-                    if available_tool_names:
+                    if available_tools:
             
-                        choice = self.manager.force_tool_use(available_tool_names, self.get_history())
+                        choice = self.manager.force_tool_use(available_tools, self.get_history())
                     else:
                         self.generate_final_answer() 
                         return
@@ -190,10 +198,10 @@ class Agent:
             elif choice.name == Name.BRAINSTORM_USE_CASES: 
                 self.brainstorm(choice.input)
 
-            else:  # Standard tool usage
-                self.act(choice)  # Corrected: pass the Choice object
+            else:  
+                self.act(choice) 
 
-        except ValueError as e:  # Handle exceptions during tool selection
+        except ValueError as e:  
             logger.error(f"Error choosing or using tool: {e}")
             self.trace("system", f"Error: {e}")
             self.think()  # Try again on the next iteration
@@ -325,22 +333,22 @@ class Agent:
                     observation = json.loads(message.content)
                     if "report_links" in observation:
                         industry_overview += f"Industry Report Links: {observation['report_links']}\n"
-                    # ... (process observations from other tools similarly)
+                    # ... process observations from other tools similarly)
                     if "competitors" in observation:
                        competitor_analysis = f"Competitor Analysis: {observation.get('competitors')}\n"
 
                 except json.JSONDecodeError as e:
                      logger.error(f"Error parsing observation: {e}, Message: {message.content}") #Log details for debugging
-                     # Consider adding the raw observation to the final answer if parsing fails.
-                     industry_overview += f"Unparsed Observation: {message.content}\n"# or handle non-json observations differently.
+                     
+                     industry_overview += f"Unparsed Observation: {message.content}\n"
 
 
-            elif message.role == "assistant":  # Check for brainstormed use cases
+            elif message.role == "assistant":  
                 try:
-                   content = json.loads(message.content) # Parse the content 1st
-                   if "brainstormed_use_cases" in content: # Then check keys
+                   content = json.loads(message.content) 
+                   if "brainstormed_use_cases" in content: 
                        use_cases = content["brainstormed_use_cases"]
-                       potential_use_cases.extend(use_cases) # Add to the final output.
+                       potential_use_cases.extend(use_cases) 
 
                 except (json.JSONDecodeError, KeyError) as e:
                     logger.error(f"Error parsing assistant message: {e}, Message: {message.content}")
@@ -391,21 +399,21 @@ class Agent:
             str: The generated text or an error message.
         """
         try:
-            contents = [Part(text=prompt)]  # Assuming 'Part' is correctly imported
+            contents = [Part(text=prompt)]
             response = generate(self.model, contents)
 
             if response is None:
                 error_message = "No response from Gemini"
-                logger.error(error_message)  # Log the error
+                logger.error(error_message) 
                 return error_message
             elif isinstance(response, str): # Check if already string
                 return response
-            else:  # Handle the case where 'response' is not a string (e.g., a list of parts)
-                return "".join([part.text for part in response]) # Join all the parts
+            else:  
+                return "".join([part.text for part in response]) 
 
-        except Exception as e:  # Catching a broad exception is okay here as it is a top-level LLM call
+        except Exception as e:  
             error_message = f"Error generating text from Gemini: {e}"
-            logger.exception(error_message) # Log the exception and traceback
+            logger.exception(error_message) 
             return error_message
         
 def run(query: str) -> Dict[str, Any]:
@@ -420,15 +428,15 @@ def run(query: str) -> Dict[str, Any]:
     """
     config = Config()
     gemini_model = TextGenerationModel.from_pretrained(config.MODEL_NAME)
-    manager = Manager(llm=gemini_model)
+    manager = Manager(llm=gemini_model, model=gemini_model)
 
     agent = Agent(model=gemini_model, manager=manager)
     agent.register(Name.GOOGLE_SEARCH, "Performs a Google search.", google_search)
-    # agent.register(Name.INDUSTRY_REPORT, industry_report_tool)  # Your tool function
-    # agent.register(Name.COMPETITOR_ANALYSIS, competitor_analysis_tool)  # Your tool function
-    # agent.register(Name.DATASET_SEARCH, dataset_search_tool) # Your tool function
-    # agent.register(Name.PRODUCT_SEARCH, search_google_products)
-    # agent.register(Name.GOOGLE_TRENDS, search_google_trends)
+    agent.register(Name.INDUSTRY_REPORT, industry_report_tool) 
+    agent.register(Name.COMPETITOR_ANALYSIS, competitor_analysis_tool) 
+    agent.register(Name.DATASET_SEARCH, dataset_search_tool) 
+    agent.register(Name.PRODUCT_SEARCH, search_google_products)
+    agent.register(Name.GOOGLE_TRENDS, search_google_trends)
 
     return agent.execute(query)
     

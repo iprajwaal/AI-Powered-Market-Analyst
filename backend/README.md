@@ -29,7 +29,7 @@
 6. Set up environment variables:
    ```
    export PYTHONDONTWRITEBYTECODE=1
-   export PYTHONPATH=$PYTHONPATH:.
+   export PYTHONPATH=$PYTHONPATH:./backend
    ```
 
 ### Setting up Credentials

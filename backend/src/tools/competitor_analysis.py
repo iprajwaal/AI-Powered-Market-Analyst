@@ -1,8 +1,9 @@
-from src.tools.google_search import google_search  # Import the google_search tool
+from src.tools.google_search import google_search  
 from typing import Dict, List, Any
 import json
 import logging
 from serpapi import GoogleSearch
+from src.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +52,10 @@ def extract_competitors_from_search(search_results: Dict) -> List[str]:
 
     for result in organic_results:
         snippet = result.get('snippet', "")
-        # Basic keyword matching (can be improved)
-        keywords = ["competitors", "rivals", "alternatives"]  # Add more keywords as needed.
+        keywords = ["competitors", "rivals", "alternatives"]
         if any(keyword in snippet.lower() for keyword in keywords):
-            # Simple extraction - can be improved with NLP.
-            # For now just add the whole snippet. Later use NLP to extract actual company entities.
             competitors.append(snippet)
     return competitors
-
-
 
 
 def google_trends_search(query: str) -> str:
@@ -67,10 +63,10 @@ def google_trends_search(query: str) -> str:
     try:
         search = GoogleSearch({"engine": "google_trends", "q": query, "api_key": config.SERPAPI_KEY})
         results = search.get_json()
-        return json.dumps(results, indent=2) # Return JSON directly
+        return json.dumps(results, indent=2)
     except Exception as e:  #Handle errors
         logger.error(f"Error in google_trends_search: {e}")
-        return json.dumps({"error": str(e)}) # Return JSON error
+        return json.dumps({"error": str(e)})
     
 
 if __name__ == "__main__":

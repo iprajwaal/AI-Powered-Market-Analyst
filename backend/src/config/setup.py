@@ -2,7 +2,7 @@ import os
 import yaml
 import google.auth
 import google.auth.transport.requests
-import openai
+import requests
 import logging
 from typing import Any, Dict
 
@@ -34,7 +34,9 @@ class Config:
         self.CREDENTIALS_PATH = self.__config['credentials_json']
         self._set_google_credentials(self.CREDENTIALS_PATH)
         self.MODEL_NAME = self.__config['model_name']
-        self.setup_openai_client()
+        self.API_KEY = self._load_api_key()
+        self.setup_client()
+        self._initialize_kaggle()
 
     @staticmethod
     def _load_config(config_path: str) -> Dict[str, Any]:
@@ -63,41 +65,79 @@ class Config:
         """
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
 
-    def setup_openai_client(self):
+    def _load_api_key(self):
         """
-        Set up the OpenAI client using the configuration and Google credentials.
+        Load the API key from the api.yml file.
+
+        Returns:
+        - str: The API key.
         """
-        scopes = [
-        'https://www.googleapis.com/auth/cloud-platform',
-        ]
-        creds, project = google.auth.default(scopes=scopes)  # Use scopes here!
-
-
-        auth_req = google.auth.transport.requests.Request()
-        creds.refresh(auth_req) 
-
-        PROJECT = self.__config['project_id']
-        ENDPOINT_NAME = self.__config['endpoint_name']
-
-        # Load API key from api.yml
         api_key_path = "/Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/credentials/api.yml"
-        with open(api_key_path, 'r') as file:
-            api_key_data = yaml.safe_load(file)
-            api_key = api_key_data['api_key']
+        try:
+            with open(api_key_path, 'r') as file:
+                api_key_data = yaml.safe_load(file)
+                return api_key_data['api_key']
+        except Exception as e:
+            logger.error(f"Failed to load the API key. Error: {e}")
+            return None
 
-        self.client = openai.OpenAI(
-        api_key=api_key,
-        base_url=f"https://{config.REGION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT}/locations/{config.REGION}/endpoints/{ENDPOINT_NAME}"
-        )
+    def setup_client(self):
+        """
+        Set up the client for making requests to the Generative Language API.
+        """
+        self.client = requests.Session()
+        self.client.headers['Authorization'] = f'Bearer {self.API_KEY}'
 
+    def _initialize_kaggle(self) -> None:
+        """Initialize Kaggle credentials"""
+        try:
+            kaggle_dir = os.path.expanduser('~/.kaggle')
+            os.makedirs(kaggle_dir, exist_ok=True)
+            kaggle_target = os.path.join(kaggle_dir, 'kaggle.json')
+            
+            import shutil
+            shutil.copy2(self.__config['kaggle_credentials'], kaggle_target)
+            
+            os.chmod(kaggle_target, 0o600)
+            logger.info("Successfully initialized Kaggle credentials")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize Kaggle credentials: {e}")
+            raise
+
+    def generate_text(self, prompt: str) -> str:
+        """
+        Generate text using the Generative Language API.
+
+        Args:
+        - prompt (str): The prompt for text generation.
+
+        Returns:
+        - str: The generated text.
+        """
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL_NAME}:generateContent"
+        data = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+        }
+        response = self.client.post(url, json=data)
+        if response.status_code == 200:
+            return response.json()['contents'][0]['parts'][0]['text']
+        else:
+            logger.error(f"Error generating text: {response.text}")
+            return None
 
 config = Config()
 
-# Example usage of the client
-response = config.client.Completions.create(
-    model=config.__config['model_name'],
-    prompt="Hello, world!",
-    max_tokens=5
-)
-
-print(response)
+# Example usage
+prompt = "Hello, world!"
+generated_text = config.generate_text(prompt)
+print(generated_text)
