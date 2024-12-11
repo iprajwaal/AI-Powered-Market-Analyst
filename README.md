@@ -1,4 +1,4 @@
-# AI-Powered Market Analyst
+# 💹 AI-Powered Market Analyst
 
 > The Automated Market Researcher uses AI to streamline market research and generate potential use cases. This tool helps businesses quickly identify market trends, analyze competitor strategies, and discover new opportunities.
 
@@ -6,41 +6,42 @@
 
 ![Project Overview](https://github.com/user-attachments/assets/c8b693af-7555-4884-89bb-203bf9517dfa)
 
-## Project Structure
+## 🛠️ Project Structure
 
-### data/react.txt
-Stores input prompts for the ReAct agent.
+```plaintext
+AI-Powered-Market-Analyst/
+├── backend/
+│   ├── config/
+│   │   └── config.yml : Configuration setup for Google Cloud, Vertex AI, and Kaggle API.
+│   ├── credentials/
+│   │   ├── key.json : Google Cloud Platform service account key.
+│   │   ├── api.yml : SERP API key.
+│   │   └── kaggle.json : Kaggle API key.
+│   ├── data/
+│   │   ├── react.txt : Stores input prompts for the ReAct agent.
+│   │   └── output/
+│   │       └── trace.json : Output traces from example runs.
+│   ├── src/
+│   │   ├── config/
+│   │   │   └── setup.py : Configuration setup for Google Cloud, Vertex AI, and Kaggle API.
+│   │   │   └── log_config.py : Logging configuration.
+│   │   ├── llm/
+│   │   │   └── gemini.py : Implementation of the Gemini model.
+│   │   ├── react/
+│   │   │   ├── agent.py : Core ReAct agent implementation.
+│   │   ├── tools/
+│   │   │   ├── google_search.py : Google Search via SERP API.
+│   │   │   ├── dataset_search.py : Kaggle dataset search.
+│   │   │   ├── competitor_analysis.py : Competitor analysis tool.
+│   │   │   └── industry_report.py : Industry report generation.
+│   │   │   └── manager.py : Manages tool selection and execution.
+│   │   └── utils/
+│   │       └── io.py : Input/output utilities.
+├── client/
+└── requirements.txt
+```
 
-### data/output/
-Contains output traces from example runs.
-
-
-### backend/src/config/
-Contains configuration setup and initialization for Google Cloud, Vertex AI, and Kaggle API.
-
-### backend/src/tools/
-Contains implementations for various tools used in market research:
-- `google_search.py`: Google Search via SERP API
-- `dataset_search.py`: Kaggle dataset search
-- `competitor_analysis.py`: Competitor analysis tool
-- `industry_report.py`: Industry report generation
-- `manager.py`: Manages tool selection and execution
-
-
-### backend/src/react/
-The core ReAct agent implementation:
-- `agent.py`: Main agent logic
-
-
-### backend/credentials/
-Stores credentials for accessing various APIs:
-- `key.json`: Google Cloud credentials
-- `api.yml`: API keys for external services
-- `kaggle.json`: Kaggle API credentials
-- `key.yml`: SerpAPI credentials
-
-
-## Agentic workflow
+## ⏳ Agentic workflow
 
 
 ![Agentic flow](https://github.com/user-attachments/assets/940f3973-5b36-4af9-bc39-f501c53afc32)
