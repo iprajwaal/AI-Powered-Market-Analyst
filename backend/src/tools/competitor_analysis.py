@@ -3,7 +3,7 @@ from typing import Dict, List, Any
 import json
 import logging
 from serpapi import GoogleSearch
-from src.config import config
+from src.config import log_config as config
 
 logger = logging.getLogger(__name__)
 

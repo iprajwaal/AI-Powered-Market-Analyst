@@ -1,13 +1,16 @@
+# /Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/src/llm/gemini.py
+
 from typing import Dict
 from typing import Any
 from typing import List
 from typing import Optional
 from src.config.log_config import logger
-from vertexai.language_models._language_models import TextGenerationModel
-from vertexai.generative_models._generative_models import GenerationConfig
-from vertexai.generative_models._generative_models import HarmBlockThreshold
-from vertexai.generative_models._generative_models import HarmCategory
-from vertexai.generative_models._generative_models import Part 
+from vertexai.preview.generative_models import GenerativeModel
+from vertexai.preview.generative_models import Part
+from vertexai.preview.generative_models import GenerationConfig
+from vertexai.preview.generative_models import HarmBlockThreshold
+from vertexai.preview.generative_models import HarmCategory
+
 
 def _create_generation_config() -> GenerationConfig:
     """
@@ -50,7 +53,7 @@ def _create_safety_settings() -> Dict[HarmCategory, HarmBlockThreshold]:
         raise
 
 
-def generate(model: TextGenerationModel, contents: List[Part]) -> Optional[str]:
+def generate(model: GenerativeModel, contents: List[Part]) -> Optional[str]:
     """
     Generate text using the given model and contents.
 

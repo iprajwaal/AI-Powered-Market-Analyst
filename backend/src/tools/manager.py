@@ -1,39 +1,26 @@
-from src.tools import * 
+# /Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/src/tools/manager.py
+
 from src.config.log_config import logger
 from pydantic import BaseModel, Field
 import json
 from enum import Enum, auto
 from dataclasses import dataclass
 from typing import Callable, Dict, Union, Any, List, Protocol, Tuple, Optional
-from src.utils.constants import Name
-from vertexai.language_models import TextGenerationModel
+from src.react.constants import Name
+from vertexai.preview.generative_models import GenerativeModel
 from vertexai.language_models import InputOutputTextPair
 from src.config.setup import Config
 from src.llm.gemini import generate
 
 Observation = Union[str, Exception]
 
-
-class Name(Enum):
-    GOOGLE_SEARCH = "google_search"
-    INDUSTRY_REPORT = "industry_report"
-    COMPETITOR_ANALYSIS = "competitor_analysis"
-    DATASET_SEARCH = "dataset_search"
-    BRAINSTORM_USE_CASES = "brainstorm_use_cases"
-    PRODUCT_SEARCH = "product_search"
-    GOOGLE_TRENDS = "google_trends"
-    NONE = "none"
-
-
 class Choice(BaseModel):
-    name: Name
-    reason: str
-    input: str = ""
-
+    name: str = Field(..., description="Name of the tool chosen.")
+    reason: str = Field(..., description="Reason for choosing the tool.")
+    input: str = Field("", description="Input for the chosen tool.")
 
 class ToolFunction(Protocol):  # Protocol for Tool function type
     def __call__(self, query: str) -> Union[str, Tuple[int, str]]: ...
-
 
 class Tool:
     def __init__(self, name: Name, description: str, func: ToolFunction) -> None:
@@ -52,13 +39,15 @@ class ResearchPhase(Enum):
     INDUSTRY = auto()
     USE_CASE = auto()
     RESOURCE = auto()
+
 @dataclass
 class ResearchContext:
     phase: ResearchPhase
     collected_data: dict
     current_focus: str
+
 class Manager:
-    def __init__(self, llm: TextGenerationModel, model: TextGenerationModel = None):
+    def __init__(self, llm: GenerativeModel, model: GenerativeModel = None):
         self.llm = llm
         self.model = model
         self.tools: Dict[Name, Tool] = {}
@@ -66,67 +55,107 @@ class Manager:
     def ask_llm(self, prompt: str) -> str:
         """Interacts with the LLM."""
         try:
-            response = generate(model=self.model, prompt=prompt)
-
-            if response is None:
-                logger.error("LLM generation failed.")
-                raise ValueError("LLM generation failed.")
+            logger.debug(f"Sending prompt to LLM: {prompt[:100]}...")
+            # For GenerativeModel
+            response = self.model.generate_content(prompt)
             
-            return response
+            if response and response.text:
+                logger.debug(f"LLM response received: {response.text[:100]}...")
+                return response.text
+            else:
+                logger.error("LLM generation failed: empty response")
+                raise ValueError("LLM generation failed: empty response")
+                
         except Exception as e:
             logger.error(f"Error interacting with LLM: {e}")
             raise
 
-    def register(self, name: Name, description: str, func: ToolFunction) -> None:
-        self.tools[name] = Tool(name, description, func)
-
     def act(self, choice: Choice) -> Observation:
-        if choice.name not in self.tools:
-            raise ValueError(f"Tool {choice.name} not registered.")
+        # Convert string name to enum if needed
+        if isinstance(choice.name, str):
+            try:
+                tool_name = Name[choice.name.upper()]
+            except (KeyError, AttributeError):
+                raise ValueError(f"Tool {choice.name} not registered.")
+        else:
+            tool_name = choice.name
+            
+        if tool_name not in self.tools:
+            raise ValueError(f"Tool {tool_name} not registered.")
 
-        tool_result = self.tools[choice.name].use(choice.input)
-
-        try:
-            parsed_result = json.loads(tool_result)
-            logged_result = json.dumps(parsed_result, indent=2)
-        except (json.JSONDecodeError, TypeError):
-            logged_result = tool_result
-
-        logger.info(f"Tool {choice.name} returned: {logged_result}")
+        tool_result = self.tools[tool_name].use(choice.input)
         return tool_result
 
     def choose(self, query: str, available_tools: List[Tool], context: str = "") -> Choice:
-        tools_string = ", ".join([
-            f"{tool.name.value}: {tool.description}" 
+        """Choose the best tool for the given query and context."""
+        # Create a mapping of string names to enum values
+        name_mapping = {}
+        for tool in available_tools:
+            # Map both the name attribute and the string representation of the enum
+            name_mapping[tool.name.name.lower()] = tool.name  # e.g., "google_search" -> Name.GOOGLE_SEARCH
+            name_mapping[str(tool.name).lower()] = tool.name  # e.g., "name.google_search" -> Name.GOOGLE_SEARCH
+            # Also map simplified names that the LLM might return
+            simple_name = tool.name.name.lower().replace('_', '')
+            name_mapping[simple_name] = tool.name  # e.g., "googlesearch" -> Name.GOOGLE_SEARCH
+        
+        # Add NONE mapping
+        name_mapping["none"] = Name.NONE
+        
+        # Format available tools for the prompt
+        tools_string = "\n".join([
+            f"- {tool.name.name.lower()}: {tool.description}" 
             for tool in available_tools
         ])
         
         prompt = f"""Choose the best tool for this task.
         Query: {query}
         Context: {context}
-        Available Tools: {tools_string}
-
-        Respond in JSON format:
+        
+        Available Tools:
+        {tools_string}
+        
+        You must respond with valid JSON in this exact format:
         {{
-            "thought": "reasoning",
+            "thought": "your detailed reasoning here",
             "tool": {{
-                "name": "TOOL_NAME",
-                "input": "specific query"
+                "name": "one_of_the_available_tool_names_exactly_as_shown_above",
+                "input": "specific query for the tool"
             }}
-        }}"""
+        }}
+        """
 
         try:
             response = self.ask_llm(prompt)
+            
+            # Debug the raw response
+            logger.debug(f"Raw LLM response: {response}")
+            
             parsed = json.loads(response)
             
             tool_choice = parsed.get("tool", {})
-            try:
-                tool_name = Name[tool_choice.get("name", "NONE")]
-            except KeyError:
+            raw_name = tool_choice.get("name", "none").lower()
+            
+            logger.debug(f"Raw tool name from LLM: {raw_name}")
+            logger.debug(f"Available mappings: {list(name_mapping.keys())}")
+            
+            # Look for the tool name in our mapping
+            tool_name = name_mapping.get(raw_name)
+            
+            # If not found, try to find a close match
+            if not tool_name:
+                for key in name_mapping:
+                    if raw_name in key or key in raw_name:
+                        tool_name = name_mapping[key]
+                        logger.info(f"Found approximate match: {raw_name} -> {key} -> {tool_name}")
+                        break
+            
+            # Default to NONE if still not found
+            if not tool_name:
+                logger.warning(f"Could not map '{raw_name}' to any registered tool. Using NONE.")
                 tool_name = Name.NONE
-                
+            
             return Choice(
-                name=tool_name,
+                name=tool_name.name if isinstance(tool_name, Name) else tool_name,
                 reason=parsed.get("thought", "No reasoning provided"),
                 input=tool_choice.get("input", query)
             )
@@ -134,7 +163,7 @@ class Manager:
         except Exception as e:
             logger.error(f"Error in tool selection: {e}")
             return Choice(
-                name=Name.NONE,
+                name=Name.NONE.name,
                 reason=f"Error in selection: {str(e)}",
                 input=""
             )
@@ -156,13 +185,23 @@ class Manager:
         thought = f"I am forcing use of {chosen_tool.name} to gather more information."
         input_query = f"Using {chosen_tool.name}, related to {context}"
         return Choice(name=chosen_tool.name, reason=thought, input=input_query)
-
+    
+    def register(self, name: Name, description: str, func: ToolFunction) -> None:
+        """
+        Register a tool with the given name, description, and function.
+        
+        Args:
+            name (Name): The name of the tool.
+            description (str): The description of the tool.
+            func (ToolFunction): The function of the tool.
+        """
+        self.tools[name] = Tool(name, description, func)
 
 def run() -> None:
     """Demonstrates Manager and Tool usage with comprehensive tests."""
 
     config = Config()
-    gemini_model = TextGenerationModel.from_pretrained(config.MODEL_NAME)
+    gemini_model = GenerativeModel.from_pretrained(config.MODEL_NAME)
 
     manager = Manager()
 
@@ -176,7 +215,6 @@ def run() -> None:
         return json.dumps({"competitors": ["Competitor A", "Competitor B"]})
     def mock_dataset_search(query: str) -> str:
         return json.dumps({"datasets": ["Dataset A", "Dataset B"]})
-
 
     manager.register(Name.GOOGLE, "Simple Google Search", mock_google_search)
     manager.register(Name.INDUSTRY_REPORT, "Finds industry reports", mock_industry_report)

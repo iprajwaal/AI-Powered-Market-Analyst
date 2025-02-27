@@ -12,7 +12,7 @@ import requests
 import json
 
 # Static paths
-CREDENTIALS_PATH = '.backend/credentials/key.yml'
+CREDENTIALS_PATH = '/Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/credentials/key.yml'
 
 def google_search(query: str, engine: str = "google", num_results: int = 10) -> str:
     """
@@ -27,10 +27,16 @@ def google_search(query: str, engine: str = "google", num_results: int = 10) -> 
         str: The search results.
     """
     try:
+        # Load API key from credentials file
+        credentials = load_yaml(CREDENTIALS_PATH)
+        api_key = credentials.get('serp', {}).get('key')  # Adjust key name according to your YAML structure
+        
+        # Include the API key in search parameters
         search = GoogleSearch({
             "q": query,
             "engine": engine,
-            "num": num_results
+            "num": num_results,
+            "api_key": api_key  # Add the API key here
         })
         results = search.get_dict()
 
@@ -38,8 +44,7 @@ def google_search(query: str, engine: str = "google", num_results: int = 10) -> 
             return json.dumps({"error": results["error"]})
 
         formatted_results = format_top_search_results(results)
-        return json.dumps({"organic_results": formatted_results}, indent=2) #Return top organic results
-
+        return json.dumps({"organic_results": formatted_results}, indent=2)
 
     except Exception as e:
         logger.error(f"Error in google_search: {e}")

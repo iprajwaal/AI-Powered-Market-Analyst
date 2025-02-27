@@ -5,6 +5,8 @@ import google.auth.transport.requests
 import requests
 import logging
 from typing import Any, Dict
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -105,12 +107,14 @@ class Config:
             logger.error(f"Failed to initialize Kaggle credentials: {e}")
             raise
 
-    def generate_text(self, prompt: str) -> str:
+    def generate_text(self, prompt: str, max_retries=3, backoff_factor=0.5) -> str:
         """
-        Generate text using the Generative Language API.
+        Generate text using the Generative Language API with retry mechanism.
 
         Args:
         - prompt (str): The prompt for text generation.
+        - max_retries (int): Maximum number of retry attempts.
+        - backoff_factor (float): Factor for exponential backoff between retries.
 
         Returns:
         - str: The generated text.
@@ -128,12 +132,36 @@ class Config:
                 }
             ]
         }
-        response = self.client.post(url, json=data)
-        if response.status_code == 200:
-            return response.json()['contents'][0]['parts'][0]['text']
-        else:
-            logger.error(f"Error generating text: {response.text}")
-            return None
+        
+        # Create a retry strategy
+        retry_strategy = Retry(
+            total=max_retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["POST"]
+        )
+        
+        # Mount the adapter to the session
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.client.mount("https://", adapter)
+        
+        try:
+            response = self.client.post(url, json=data, timeout=30)  # Added timeout
+            if response.status_code == 200:
+                return response.json()['contents'][0]['parts'][0]['text']
+            else:
+                error_msg = f"Error generating text: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                return f"API Error: {response.status_code}"
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Connection error: {e}")
+            return "Connection error occurred. Please check your network or API endpoint."
+        except requests.exceptions.Timeout as e:
+            logger.error(f"Request timed out: {e}")
+            return "Request timed out. The API server might be overloaded."
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            return f"Unexpected error: {str(e)}"
 
 config = Config()
 

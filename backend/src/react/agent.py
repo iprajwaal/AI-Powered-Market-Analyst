@@ -1,3 +1,5 @@
+# /Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/src/react/agent.py
+
 import os
 import json
 from enum import Enum, auto
@@ -7,17 +9,17 @@ from src.llm.gemini import generate
 from src.config.log_config import logger 
 from pydantic import BaseModel, Field
 from typing import Dict, List, Callable, Protocol, Union, Any, Optional
-from vertexai.language_models._language_models import TextGenerationModel
-from vertexai.generative_models._generative_models import Part
+from vertexai.preview.generative_models import GenerativeModel
+from vertexai.preview.generative_models import Part
 from src.tools.google_search import google_search
 from src.tools.industry_report import industry_report_search as industry_report_tool
 from src.tools.competitor_analysis import competitor_analysis as competitor_analysis_tool
 from src.tools.dataset_search import dataset_search as dataset_search_tool
-from src.tools.product_search import search_google_products
-from src.tools.google_trends import search_google_trends
+from src.tools.product_search import product_search as search_google_products
+from src.tools.competitor_analysis import google_trends_search as search_google_trends
 from src.tools.manager import Manager
 import logging
-from src.react.constants import Name 
+from src.react.constants import Name
 
 Observation = Union[str, Exception]
 
@@ -27,21 +29,6 @@ PROMPT_TEMPLATE_PATH = [
 ]
 OUTPUT_TRACE_PATH = "/Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/data/output/trace.json"
 
-class Name(Enum):
-    GOOGLE_SEARCH = auto()
-    INDUSTRY_REPORT = auto()
-    COMPETITOR_ANALYSIS = auto()
-    DATASET_SEARCH = auto()
-    BRAINSTORM_USE_CASES = auto()
-    PRODUCT_SEARCH = auto()  
-    GOOGLE_TRENDS = auto()
-    NONE = auto()
-
-    def __str__(self) -> str:
-        """
-        representation of the tool name.
-        """
-        return self.name.lower().replace("_", " ")
     
 class Choice(BaseModel):
     """
@@ -81,7 +68,7 @@ class Tool:
         log = logger.getLogger(__name__)
         try:
             log.info(f"Using tool {self.name} with query: {query}")
-            result = self.func(query) 
+            result = self.function(query) 
             log.debug(f"Tool {self.name} returned: {result}")
             return result
 
@@ -90,11 +77,7 @@ class Tool:
             return f"Error in {self.name}: {e}"
 
 class Agent:
-    """
-    Agent class to represent an agent with a list of tools.
-    """
-
-    def __init__(self, model: TextGenerationModel, manager: Optional[Manager] = None) -> None:
+    def __init__(self, model: GenerativeModel, manager: Optional[Manager] = None) -> None:
         """
         Initialize the Agent object with the given model, tools, and messages.
         
@@ -103,14 +86,14 @@ class Agent:
         """
         self.model = model
         self.tools: Dict[Name, Tool] = {}
-        self.messages = manager or Manager(llm=model, model=model)
+        self.manager = manager or Manager(llm=model, model=model)
+        self.messages = []  # Initialize messages as a list
         self.tools: Dict[Name, Tool] = {}
         self.query = ""
         self.max_iterations = 15
         self.current_iteration = 0
         self.min_iterations = 5
         self.template = self._load_template()
-        self.manager = Manager
 
     def _load_template(self) -> str:
         """
@@ -152,7 +135,7 @@ class Agent:
         """
         if role != "system":
             self.messages.append(Message(role=role, content=content))
-        write_to_file(path = OUTPUT_TRACE_PATH, content = f'{role}: {content}\n')
+        write_to_file(path=OUTPUT_TRACE_PATH, content=f'{role}: {content}\n')
 
     def get_history(self) -> str:
         """
@@ -170,6 +153,9 @@ class Agent:
         logger.info(f"Thinking iteration {self.current_iteration}...")
         write_to_file(path = OUTPUT_TRACE_PATH, content = f"\n{'='*50}\nThinking iteration {self.current_iteration}\n{'='*50}\n")
 
+        # Debug info
+        logger.debug(f"Available tools: {[t.name for t in self.tools.values()]}")
+        
         if self.current_iteration >= self.max_iterations:
             logger.info("Max iterations reached. Stopping!")
             self.generate_final_answer()
@@ -177,9 +163,14 @@ class Agent:
 
         # Get available tools (excluding BRAINSTORM_USE_CASES)
         available_tools = [self.tools[tool_name] for tool_name in self.tools if tool_name != Name.BRAINSTORM_USE_CASES]
+        
+        # More debug info
+        logger.debug(f"Filtered tools for selection: {[t.name for t in available_tools]}")
 
         try:
+            logger.debug(f"Calling manager.choose with query: {self.query}")
             choice = self.manager.choose(self.query, available_tools, self.get_history())
+            logger.debug(f"Manager selected tool: {choice.name} with reason: {choice.reason}")
 
             if choice.name == Name.NONE:
                 if self.current_iteration >= self.min_iterations:
@@ -275,10 +266,24 @@ class Agent:
         Returns:
             None
         """
-
-        tool_name = choice.name
-        query = choice.input 
+        # Ensure we're working with a string name
+        tool_name_str = choice.name
+        
+        # Convert to Name enum if possible (for better type safety)
+        try:
+            if isinstance(tool_name_str, str):
+                tool_name = Name[tool_name_str.upper()]
+            else:
+                tool_name = tool_name_str
+        except (KeyError, ValueError):
+            logger.error(f"Invalid tool name: {tool_name_str}")
+            self.trace("system", f"Error: Invalid tool name {tool_name_str}")
+            self.think()
+            return
+        
+        logger.debug(f"Looking up tool: {tool_name}, available tools: {list(self.tools.keys())}")
         tool = self.tools.get(tool_name)
+        
         if not tool:
             logger.error(f"No tool registered for: {tool_name}")
             self.trace("system", f"Error: Tool {tool_name} not found")
@@ -286,6 +291,7 @@ class Agent:
             return
 
         try:
+            query = choice.input or self.query  # Use provided input or fall back to original query
             result = tool.use(query)
 
             if isinstance(result, tuple):
@@ -297,26 +303,24 @@ class Agent:
             elif isinstance(result, str):
                 try:
                     observation = json.loads(result)
-                except json.JSONDecodeError as e:
-                    observation = {"error": f"Invalid JSON from {tool_name}: {e}", "raw_output": result}
+                except json.JSONDecodeError:
+                    observation = {"result": result}  # Store as plain text if not JSON
 
             else:
-                observation = {"error": f"Unexpected tool output type: {type(result)}", "raw_output": result}
+                observation = {"error": f"Unexpected tool output type: {type(result)}", "raw_output": str(result)}
 
             observation_message = f"Observation from {tool_name}: {json.dumps(observation, indent=2)}"
             self.trace("system", observation_message) 
 
-            self.messages.append(Message(role="system", content=json.dumps(observation))) # Store the JSON string.
+            # Store the observation for the history
+            self.messages.append(Message(role="system", content=json.dumps(observation)))
 
-
-            if "error" in observation:
-                self.think()
-            else:
-                 self.think()
+            # Continue thinking
+            self.think()
 
         except Exception as e:
             error_message = f"Unexpected error using {tool_name}: {e}"
-            logger.exception(error_message) # Log the full exception
+            logger.exception(error_message)
             self.trace("system", error_message)
             self.think()
 
@@ -399,18 +403,16 @@ class Agent:
             str: The generated text or an error message.
         """
         try:
-            contents = [Part(text=prompt)]
-            response = generate(self.model, contents)
-
-            if response is None:
+            # For GenerativeModel, we can pass the prompt string directly
+            response = self.model.generate_content(prompt)
+            
+            if response and response.text:
+                return response.text
+            else:
                 error_message = "No response from Gemini"
                 logger.error(error_message) 
                 return error_message
-            elif isinstance(response, str): # Check if already string
-                return response
-            else:  
-                return "".join([part.text for part in response]) 
-
+                
         except Exception as e:  
             error_message = f"Error generating text from Gemini: {e}"
             logger.exception(error_message) 
@@ -424,19 +426,28 @@ def run(query: str) -> Dict[str, Any]:
         query (str): The query to execute.
 
     Returns:
-        str: The agent's final answer.
+        Dict[str, Any]: The agent's final answer.
     """
     config = Config()
-    gemini_model = TextGenerationModel.from_pretrained(config.MODEL_NAME)
+    gemini_model = GenerativeModel("gemini-pro")
+    
+    # Create manager first
     manager = Manager(llm=gemini_model, model=gemini_model)
-
+    
+    # Register tools with the manager
+    manager.register(Name.GOOGLE_SEARCH, "Performs a Google search.", google_search)
+    manager.register(Name.INDUSTRY_REPORT, "Finds industry reports", industry_report_tool) 
+    manager.register(Name.COMPETITOR_ANALYSIS, "Analyzes competitors", competitor_analysis_tool) 
+    manager.register(Name.DATASET_SEARCH, "Searches for datasets", dataset_search_tool) 
+    manager.register(Name.PRODUCT_SEARCH, "Searches for products", search_google_products)
+    manager.register(Name.GOOGLE_TRENDS, "Searches Google Trends", search_google_trends)
+    
+    # Then create agent with that manager
     agent = Agent(model=gemini_model, manager=manager)
-    agent.register(Name.GOOGLE_SEARCH, "Performs a Google search.", google_search)
-    agent.register(Name.INDUSTRY_REPORT, industry_report_tool) 
-    agent.register(Name.COMPETITOR_ANALYSIS, competitor_analysis_tool) 
-    agent.register(Name.DATASET_SEARCH, dataset_search_tool) 
-    agent.register(Name.PRODUCT_SEARCH, search_google_products)
-    agent.register(Name.GOOGLE_TRENDS, search_google_trends)
+    
+    # Register the same tools with the agent
+    for name, tool in manager.tools.items():
+        agent.tools[name] = tool
 
     return agent.execute(query)
     
