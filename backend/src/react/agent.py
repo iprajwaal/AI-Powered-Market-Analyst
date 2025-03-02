@@ -1,6 +1,3 @@
-# /Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/src/react/agent.py
-# Modified version with fixes
-
 import os
 import json
 from enum import Enum, auto
