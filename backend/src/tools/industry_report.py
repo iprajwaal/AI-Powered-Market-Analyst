@@ -6,9 +6,38 @@ import requests
 import PyPDF2
 import json
 import os
+import time
+import requests
 
 config = Config()
 logger = logging.getLogger(__name__) 
+
+def download_pdf_with_retry(url, max_retries=3):
+    """Download PDF with retry logic for 403 errors"""
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 403:
+                logger.warning(f"403 Forbidden when accessing {url}. Retrying with different headers.")
+                # Try with different headers on the next attempt
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'application/pdf,*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                }
+                try:
+                    response = requests.get(url, headers=headers, timeout=10)
+                    response.raise_for_status()
+                    return response.content
+                except:
+                    time.sleep(1)  # Wait before another retry
+            else:
+                raise
+    
+    raise Exception(f"Failed to download PDF after {max_retries} attempts")
 
 def industry_report_search(query: str) -> str:
     """Searches for industry reports and extracts text from PDFs."""
@@ -62,11 +91,11 @@ def extract_text_from_pdf(pdf_link: str) -> Union[str, Tuple[int, str]]:
     """
 
     try:
-        response = requests.get(pdf_link, stream=True, timeout=10) 
-        response.raise_for_status()  
-
+        # Use the new download function with retry instead of direct request
+        pdf_content = download_pdf_with_retry(pdf_link)
+        
         with open("temp.pdf", "wb") as temp_pdf:
-            temp_pdf.write(response.content)
+            temp_pdf.write(pdf_content)
 
         reader = PyPDF2.PdfReader("temp.pdf")
 

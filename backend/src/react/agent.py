@@ -1,4 +1,5 @@
 # /Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/src/react/agent.py
+# Modified version with fixes
 
 import os
 import json
@@ -36,6 +37,7 @@ class Choice(BaseModel):
     """
     name: str = Field(..., description="Name of the tool chosen.")
     reason: str = Field(..., description="Reason for choosing the tool.")
+    input: str = Field("", description="Input for the chosen tool.")
 
 class Message(BaseModel):
     """
@@ -69,7 +71,7 @@ class Tool:
         try:
             log.info(f"Using tool {self.name} with query: {query}")
             result = self.function(query) 
-            log.debug(f"Tool {self.name} returned: {result}")
+            log.debug(f"Tool {self.name} returned result")
             return result
 
         except Exception as e:  
@@ -88,12 +90,19 @@ class Agent:
         self.tools: Dict[Name, Tool] = {}
         self.manager = manager or Manager(llm=model, model=model)
         self.messages = []  # Initialize messages as a list
-        self.tools: Dict[Name, Tool] = {}
         self.query = ""
         self.max_iterations = 15
         self.current_iteration = 0
         self.min_iterations = 5
         self.template = self._load_template()
+        self.tool_sequence = [
+            Name.GOOGLE_SEARCH, 
+            Name.COMPETITOR_ANALYSIS, 
+            Name.INDUSTRY_REPORT, 
+            Name.PRODUCT_SEARCH, 
+            Name.DATASET_SEARCH
+        ]
+        self.current_tool_idx = 0
 
     def _load_template(self) -> str:
         """
@@ -137,6 +146,7 @@ class Agent:
             self.messages.append(Message(role=role, content=content))
         write_to_file(path=OUTPUT_TRACE_PATH, content=f'{role}: {content}\n')
 
+
     def get_history(self) -> str:
         """
         Retrive the conversation history.
@@ -146,12 +156,34 @@ class Agent:
         """
         return "\n".join([f"{m.role}: {m.content}" for m in self.messages])
     
+    def manage_context_window(self, max_tokens=25000):
+        """Keep conversation history within token limits by summarizing older messages."""
+        # Calculate approximate token count (rough estimation)
+        total_tokens = sum(len(m.content.split()) * 1.3 for m in self.messages)
+        
+        if total_tokens > max_tokens:
+            # Summarize oldest messages until within limit
+            # Keep the first message (user query) intact
+            first_message = self.messages[0] if self.messages else None
+            # Summarize the next several messages
+            messages_to_summarize = self.messages[1:6] if len(self.messages) > 6 else self.messages[1:]
+            
+            if messages_to_summarize:
+                summary_content = "\n".join([f"{m.role}: {m.content}" for m in messages_to_summarize])
+                summary_prompt = f"Summarize these observations in 100 words or less: {summary_content}"
+                summary = self.ask_gemini(summary_prompt)
+                
+                # Replace summarized messages with summary
+                self.messages = ([first_message] if first_message else []) + \
+                            [Message(role="system", content=f"Summary of earlier observations: {summary}")] + \
+                            self.messages[6:] if len(self.messages) > 6 else []
+    
     def think(self) -> None:
-        """Main reasoning loop."""
-
+        """Main reasoning loop with sequential tool usage."""
+        self.manage_context_window()
         self.current_iteration += 1
         logger.info(f"Thinking iteration {self.current_iteration}...")
-        write_to_file(path = OUTPUT_TRACE_PATH, content = f"\n{'='*50}\nThinking iteration {self.current_iteration}\n{'='*50}\n")
+        write_to_file(path=OUTPUT_TRACE_PATH, content=f"\n{'='*50}\nThinking iteration {self.current_iteration}\n{'='*50}\n")
 
         # Debug info
         logger.debug(f"Available tools: {[t.name for t in self.tools.values()]}")
@@ -161,100 +193,40 @@ class Agent:
             self.generate_final_answer()
             return
 
-        # Get available tools (excluding BRAINSTORM_USE_CASES)
-        available_tools = [self.tools[tool_name] for tool_name in self.tools if tool_name != Name.BRAINSTORM_USE_CASES]
-        
-        # More debug info
-        logger.debug(f"Filtered tools for selection: {[t.name for t in available_tools]}")
-
-        try:
-            logger.debug(f"Calling manager.choose with query: {self.query}")
-            choice = self.manager.choose(self.query, available_tools, self.get_history())
-            logger.debug(f"Manager selected tool: {choice.name} with reason: {choice.reason}")
-
-            if choice.name == Name.NONE:
-                if self.current_iteration >= self.min_iterations:
-                    self.generate_final_answer()  
-                    return 
-                else:
-                    self.trace("assistant", "Thought: I need more information before finalizing.")
+        # Get the tool in the predefined sequence
+        if self.current_tool_idx < len(self.tool_sequence):
+            current_tool_name = self.tool_sequence[self.current_tool_idx]
             
-                    if available_tools:
+            # Make sure the tool exists
+            if current_tool_name not in self.tools:
+                logger.error(f"Tool {current_tool_name} not found in registered tools!")
+                self.trace("system", f"Error: Tool {current_tool_name} not found")
+                self.current_tool_idx += 1  # Skip to next tool
+                self.think()
+                return
             
-                        choice = self.manager.force_tool_use(available_tools, self.get_history())
-                    else:
-                        self.generate_final_answer() 
-                        return
-
-            elif choice.name == Name.BRAINSTORM_USE_CASES: 
-                self.brainstorm(choice.input)
-
-            else:  
-                self.act(choice) 
-
-        except ValueError as e:  
-            logger.error(f"Error choosing or using tool: {e}")
-            self.trace("system", f"Error: {e}")
-            self.think()  # Try again on the next iteration
-
-
-    def decide(self, response: str) -> None:
-        """
-        Decides the next action based on the response from the model.
-
-        Args:
-            response (str): The response from the model.
-        """
-        try:
-            parsed_response = json.loads(response)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse response: {response}. Error: {str(e)}")
-            self.trace("assistant", "I encountered an error in processing. Let me try again.")
-            self.think()
-        except Exception as e:
-            logger.error(f"Error processing response: {str(e)}")
-            self.trace("assistant", "I encountered an unexpected error. Let me try a different approach.")
-            self.think()
-
-        if "action" in parsed_response:
-            action = parsed_response["action"]
-            tool_name = Name[action["name"].upper()]
-
-            if tool_name == Name.NONE:
-                logger.info("No tool selected. Stopping!")
-                self.generate_final_answer()
-            elif tool_name == Name.BRAINSTORM_USE_CASES:
-                self.trace("assistant", "Action: Brainstorming use cases")
-                self.brainstorm(action["input"])
-            else:  # Handle other tools
-                self.trace("assistant", f"Action: Using {tool_name} tool")
-                self.act(tool_name, action.get("input", self.query))
-
-    def brainstorm(self, context: str) -> None:
-        """Handeling the brainstorming action."""
-
-        prompt = f"""Based on the following context, brainstorm innovative AI/GenAI use cases:
-
-        Context: {context}
-
-        Provide a list of use cases in JSON format, where each use case has a "use_case" description and an empty "resources" list (to be filled later).
-        Example:
-        ```json
-        [
-            {{"use_case": "Personalized product recommendations based on customer style preferences", "resources": []}},
-            {{"use_case": "Virtual try-on experience using augmented reality", "resources": []}}
-        ]
-        ```
-        """
-        use_cases_json = self.ask_gemini(prompt)
-        try:
-            use_cases = json.loads(use_cases_json)
-            self.trace("system", f"Brainstormed Use Cases: {json.dumps(use_cases, indent=2)}")
-            self.think()
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse use cases: {use_cases_json}. Error: {str(e)}")
-            self.trace("assistant", "I encountered an error while brainstorming use cases.Let me try another approach.")
-            self.think()
+            logger.info(f"Using tool {current_tool_name} (iteration {self.current_iteration})")
+            
+            # Use the manager to force tool selection
+            try:
+                choice = self.manager.force_tool_selection(current_tool_name, self.query)
+                self.trace("assistant", f"I'll use the {choice.name} tool: {choice.reason}")
+                
+                # Increment the tool index for next iteration
+                self.current_tool_idx += 1
+                
+                # Execute the tool
+                self.act(choice)
+                
+            except Exception as e:
+                logger.error(f"Error selecting or using tool {current_tool_name}: {e}")
+                self.trace("system", f"Error using tool {current_tool_name}: {str(e)}")
+                self.current_tool_idx += 1  # Skip to next tool
+                self.think()
+        else:
+            # If we've gone through all tools, generate the final answer
+            logger.info("All tools in sequence have been used. Generating final answer.")
+            self.generate_final_answer()
 
     def act(self, choice: Choice) -> None:
         """
@@ -266,38 +238,63 @@ class Agent:
         Returns:
             None
         """
-        # Ensure we're working with a string name
         tool_name_str = choice.name
         
-        # Convert to Name enum if possible (for better type safety)
+        # Get the full Name enum if possible
         try:
             if isinstance(tool_name_str, str):
-                tool_name = Name[tool_name_str.upper()]
+                try:
+                    tool_name = Name[tool_name_str.upper()]
+                except KeyError:
+                    # If the exact name doesn't match, try to find closest match
+                    for name in Name:
+                        if tool_name_str.upper() in name.name:
+                            tool_name = name
+                            break
+                    else:
+                        raise ValueError(f"Cannot map {tool_name_str} to any tool name")
             else:
                 tool_name = tool_name_str
-        except (KeyError, ValueError):
-            logger.error(f"Invalid tool name: {tool_name_str}")
+        except Exception as e:
+            logger.error(f"Invalid tool name: {tool_name_str}, Error: {e}")
             self.trace("system", f"Error: Invalid tool name {tool_name_str}")
-            self.think()
+            self.think()  # Continue to next tool in sequence
             return
         
-        logger.debug(f"Looking up tool: {tool_name}, available tools: {list(self.tools.keys())}")
+        logger.info(f"Executing tool: {tool_name}")
+        
+        # Get the tool instance
         tool = self.tools.get(tool_name)
         
         if not tool:
             logger.error(f"No tool registered for: {tool_name}")
             self.trace("system", f"Error: Tool {tool_name} not found")
-            self.think()
+            self.think()  # Continue to next tool in sequence
             return
-
+        
+        # Log what we're doing
+        self.trace("assistant", f"Using tool: {tool_name}")
+        
         try:
             query = choice.input or self.query  # Use provided input or fall back to original query
             result = tool.use(query)
-
+            
+            # Process and store the result
             if isinstance(result, tuple):
                 status_code, error_message = result
                 observation = {"error": f"Tool {tool_name} failed with status {status_code}: {error_message}"}
+            
+            elif isinstance(result, str) and len(result) > 10000:
+                # For large string results, truncate and summarize
+                logger.info(f"Large result from {tool_name}: {len(result)} chars. Summarizing...")
+                summary_prompt = f"Summarize this information in 500 words or less: {result[:15000]}"
+                summary = self.ask_gemini(summary_prompt)
                 
+                observation = {
+                    "result_summary": summary,
+                    "result_length": len(result),
+                    "result_sample": result[:1000] + "..."  # Include just a sample
+                }
             elif isinstance(result, dict):
                 observation = result
             elif isinstance(result, str):
@@ -305,64 +302,168 @@ class Agent:
                     observation = json.loads(result)
                 except json.JSONDecodeError:
                     observation = {"result": result}  # Store as plain text if not JSON
-
             else:
                 observation = {"error": f"Unexpected tool output type: {type(result)}", "raw_output": str(result)}
-
-            observation_message = f"Observation from {tool_name}: {json.dumps(observation, indent=2)}"
+            
+            # Create a more concise version for logging
+            log_observation = {
+                "tool": str(tool_name),
+                "result_type": type(result).__name__,
+                "result_length": len(str(result)) if result else 0
+            }
+            observation_message = f"Observation from {tool_name}: {json.dumps(log_observation, indent=2)}"
             self.trace("system", observation_message) 
-
-            # Store the observation for the history
+            
+            # Store the full observation in the history
             self.messages.append(Message(role="system", content=json.dumps(observation)))
-
-            # Continue thinking
+            
+            # Give the assistant a chance to interpret the results
+            analysis_prompt = f"""
+            You are a market research assistant analyzing information from different tools.
+            
+            Tool used: {tool_name}
+            Query: {query}
+            
+            Tool result: {json.dumps(observation, indent=2)}
+            
+            Please provide a brief analysis of this information:
+            1. What are the key insights?
+            2. How does this inform our understanding of the market?
+            3. What should we explore next?
+            
+            Keep your response under 200 words.
+            """
+            
+            analysis = self.ask_gemini(analysis_prompt)
+            
+            # Add the analysis to the conversation
+            self.trace("assistant", analysis)
+            
+            # Continue the thinking process
             self.think()
-
+            
         except Exception as e:
             error_message = f"Unexpected error using {tool_name}: {e}"
             logger.exception(error_message)
             self.trace("system", error_message)
-            self.think()
+            self.think()  # Continue to next tool
 
     def generate_final_answer(self) -> None:
-        """Generates the final structured answer."""
+        """Generates the final structured answer based on all collected data."""
 
+        # First, collect all the information from previous tool calls
         industry_overview = ""
         competitor_analysis = ""
         potential_use_cases = []
+        product_info = ""
+        dataset_info = ""
 
         for message in self.messages:
             if message.role == "system": 
                 try:
-                    observation = json.loads(message.content)
-                    if "report_links" in observation:
-                        industry_overview += f"Industry Report Links: {observation['report_links']}\n"
-                    # ... process observations from other tools similarly)
-                    if "competitors" in observation:
-                       competitor_analysis = f"Competitor Analysis: {observation.get('competitors')}\n"
+                    # Try to parse as JSON
+                    observation = None
+                    try:
+                        observation = json.loads(message.content)
+                    except json.JSONDecodeError:
+                        # If not valid JSON, use as plain text
+                        observation = {"plain_text": message.content}
+                    
+                    # Extract information based on what's available
+                    if isinstance(observation, dict):
+                        # Process industry reports
+                        if "report_links" in observation:
+                            industry_overview += f"Industry Report Links: {observation['report_links']}\n"
+                        if "report_summary" in observation:
+                            industry_overview += f"Report Summary: {observation['report_summary']}\n"
+                        if "result_summary" in observation:
+                            industry_overview += f"Summary: {observation['result_summary']}\n"
+                            
+                        # Process competitor analysis
+                        if "competitors" in observation:
+                            competitor_analysis += f"Competitor Analysis: {observation.get('competitors')}\n"
+                        if "competition" in observation:
+                            competitor_analysis += f"Competition: {observation.get('competition')}\n"
+                            
+                        # Process product information
+                        if "products" in observation:
+                            product_info += f"Products: {observation.get('products')}\n"
+                        
+                        # Process dataset information
+                        if "datasets" in observation:
+                            dataset_info += f"Datasets: {observation.get('datasets')}\n"
+                        
+                        # Process plain text (add to industry overview as fallback)
+                        if "plain_text" in observation:
+                            industry_overview += f"{observation.get('plain_text')}\n"
 
-                except json.JSONDecodeError as e:
-                     logger.error(f"Error parsing observation: {e}, Message: {message.content}") #Log details for debugging
-                     
-                     industry_overview += f"Unparsed Observation: {message.content}\n"
-
-
+                except Exception as e:
+                    logger.error(f"Error processing observation: {e}, Message: {message.content}")
+                    industry_overview += f"Unparsed Observation: {message.content[:100]}\n"
+            
+            # Extract brainstormed use cases if present
             elif message.role == "assistant":  
                 try:
-                   content = json.loads(message.content) 
-                   if "brainstormed_use_cases" in content: 
-                       use_cases = content["brainstormed_use_cases"]
-                       potential_use_cases.extend(use_cases) 
+                    # Try to parse as JSON
+                    content = None
+                    try:
+                        content = json.loads(message.content)
+                    except json.JSONDecodeError:
+                        # Not a JSON message, skip
+                        pass
+                        
+                    if isinstance(content, dict) and "brainstormed_use_cases" in content:
+                        use_cases = content["brainstormed_use_cases"]
+                        potential_use_cases.extend(use_cases)
+                except Exception as e:
+                    logger.error(f"Error parsing assistant message: {e}")
 
-                except (json.JSONDecodeError, KeyError) as e:
-                    logger.error(f"Error parsing assistant message: {e}, Message: {message.content}")
+        # If we don't have any use cases yet, generate them
+        if not potential_use_cases:
+            # Summarize all collected information
+            all_info = f"""
+            Industry Overview: {industry_overview}
+            Competitor Analysis: {competitor_analysis}
+            Product Information: {product_info}
+            Dataset Information: {dataset_info}
+            """
+            
+            # Generate use cases based on collected information
+            brainstorm_prompt = f"""
+            Based on the following information about the cosmetics industry and Sephora, 
+            generate 5 innovative AI/GenAI use cases:
+            
+            {all_info}
+            
+            For each use case, provide:
+            1. A title
+            2. A detailed description
+            3. Potential benefits
+            4. Implementation challenges
+            
+            Format as a JSON array of objects, each with a "use_case" field.
+            """
+            
+            try:
+                use_cases_json = self.ask_gemini_with_backoff(brainstorm_prompt)
+                use_cases = json.loads(use_cases_json)
+                potential_use_cases = use_cases
+            except (json.JSONDecodeError, Exception) as e:
+                logger.error(f"Error generating use cases: {e}")
+                # Create a simple use case as fallback
+                potential_use_cases = [
+                    {"use_case": "AI-powered skin analysis for personalized product recommendations", "resources": []}
+                ]
 
-            final_answer = {
-            "industry_overview": industry_overview,
-            "competitor_analysis": competitor_analysis,
-            "potential_use_cases": potential_use_cases,
-
+        # Now generate the final answer
+        final_answer = {
+            "industry_overview": industry_overview or "Information about the cosmetics industry focusing on Sephora, including market trends and opportunities for AI integration.",
+            "competitor_analysis": competitor_analysis or "Analysis of Sephora's competitors in the cosmetics space and their AI initiatives.",
+            "potential_use_cases": potential_use_cases or [
+                {"use_case": "AI-powered virtual makeup try-on for Sephora customers", "resources": []}
+            ],
         }
+        
         self.trace("assistant", json.dumps({"answer": final_answer}, indent=2))
             
     def execute(self, query: str) -> Union[Dict[str,Any], str]:
@@ -378,11 +479,22 @@ class Agent:
         """
         self.query = query
         self.trace(role="user", content=query)
+        
+        # Reset iteration counter and tool index
+        self.current_iteration = 0
+        self.current_tool_idx = 0
+        
+        # Start the thinking loop
         self.think()
 
+        # Get the final message (should contain the answer)
+        if not self.messages:
+            return {"error": "No messages generated during execution"}
+            
         final_message = self.messages[-1]
 
         try: 
+            # Try to parse the final message as JSON
             message_content = json.loads(final_message.content)
 
             if final_message.role == "assistant" and "answer" in message_content:
@@ -391,6 +503,46 @@ class Agent:
                 return message_content 
         except json.JSONDecodeError: 
            return final_message.content
+        
+    def ask_gemini_with_backoff(self, prompt: str, max_retries=5) -> str:
+        """
+        Generate text using the Gemini model with exponential backoff for rate limits.
+        
+        Args:
+            prompt (str): The prompt to generate text from.
+            max_retries (int): Maximum number of retry attempts.
+            
+        Returns:
+            str: The generated text or an error message.
+        """
+        import time
+        import random
+        
+        retry = 0
+        while retry < max_retries:
+            try:
+                # For GenerativeModel, we can pass the prompt string directly
+                response = self.model.generate_content(prompt)
+                
+                if response and hasattr(response, 'text') and response.text:
+                    return response.text
+                else:
+                    error_message = "No response from Gemini"
+                    logger.error(error_message) 
+                    return error_message
+                    
+            except Exception as e:
+                if "429" in str(e) or "Quota exceeded" in str(e):  # Rate limit error
+                    wait_time = (2 ** retry) + random.uniform(0, 1)
+                    logger.warning(f"Rate limited. Retrying in {wait_time}s")
+                    time.sleep(wait_time)
+                    retry += 1
+                else:
+                    error_message = f"Error generating text from Gemini: {e}"
+                    logger.exception(error_message) 
+                    return error_message
+        
+        return "Failed after max retries due to rate limiting"
         
     def ask_gemini(self, prompt: str) -> str:
         """
@@ -406,7 +558,7 @@ class Agent:
             # For GenerativeModel, we can pass the prompt string directly
             response = self.model.generate_content(prompt)
             
-            if response and response.text:
+            if response and hasattr(response, 'text') and response.text:
                 return response.text
             else:
                 error_message = "No response from Gemini"
