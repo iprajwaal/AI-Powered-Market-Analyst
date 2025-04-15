@@ -1,6 +1,0 @@
-project_id: "central-rush-447806-r8"
-credentials_json: "/Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/credentials/key.json"
-region: "us-central1"
-model_name: "gemini-pro"
-api_key: "/Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/credentials/api.yml"
-kaggle_credentials: "/Users/prajwal/Developer/AI-Powered-Market-Analyst/backend/credentials/kaggle.json"
