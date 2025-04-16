@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import asyncio
-from typing import Dict, List, Optional, Any, Union
+from typing import List, Dict, Any, Optional
 
 import httpx
 from kaggle.api.kaggle_api_extended import KaggleApi
@@ -12,63 +12,65 @@ from config.settings import KAGGLE_USERNAME, KAGGLE_KEY, HUGGINGFACE_API_KEY, DA
 logger = logging.getLogger(__name__)
 
 class DatasetTools:
-    """Tool for managing datasets."""
-
+    """Tools for finding and analyzing datasets."""
+    
     def __init__(self):
-        """Initialize the DatasetTools tool."""
+        """Initialize the dataset tools."""
         self.sources = DATASET_CONFIG["sources"]
         self.max_results_per_source = DATASET_CONFIG["max_results_per_source"]
         self.timeout = DATASET_CONFIG["timeout"]
-
+        
         # Set up Kaggle credentials
         if KAGGLE_USERNAME and KAGGLE_KEY:
-            os.environ['KAGGLE_USERNAME'] = KAGGLE_USERNAME
-            os.environ['KAGGLE_KEY'] = KAGGLE_KEY
-            self.kaggle_api = True
+            os.environ["KAGGLE_USERNAME"] = KAGGLE_USERNAME
+            os.environ["KAGGLE_KEY"] = KAGGLE_KEY
+            self.kaggle_available = True
             try:
                 self.kaggle_api = KaggleApi()
                 self.kaggle_api.authenticate()
             except Exception as e:
-                logger.error(f"Failed to authenticate with Kaggle API: {e}")
-                self.kaggle_api = False
+                logger.error(f"Failed to authenticate with Kaggle: {e}")
+                self.kaggle_available = False
         else:
-            logger.warning("Kaggle credentials not found. Kaggle API will not be available.")
-            self.kaggle_api = False
-
-        # Check if HuggingFace credentials are set
+            logger.warning("Kaggle credentials not found")
+            self.kaggle_available = False
+        
+        # Check for HuggingFace credentials
         self.huggingface_api_key = HUGGINGFACE_API_KEY
-        self.huggingface_api_available = bool(self.huggingface_api_key)
-        if not self.huggingface_api_available:
-            logger.warning("HuggingFace API key not found. HuggingFace API will not be available.")
-
+        self.huggingface_available = bool(self.huggingface_api_key)
+        if not self.huggingface_available:
+            logger.warning("HuggingFace API key not found")
+    
     async def search_kaggle_datasets(self, query: str, max_results: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Search Kaggle datasets based on a query.
+        """Search for datasets on Kaggle.
+        
         Args:
             query: The search query.
-            max_results: The maximum number of results to return.
-            Returns:
-            List of Kaggle datasets matching the query.
+            max_results: Optional maximum number of results to return.
+            
+        Returns:
+            List of dataset information dictionaries.
         """
-
         max_results = max_results or self.max_results_per_source
-
-        if not self.kaggle_api:
-            logger.warning("Kaggle API is not available. Skipping Kaggle dataset search.")
+        
+        if not self.kaggle_available:
+            logger.warning("Kaggle API not available")
             return []
+        
         try:
-            logger.info(f"Searching Kaggle datasets for query: {query}")
-
+            logger.info(f"Searching Kaggle for datasets: {query}")
+            
             # Search for datasets
             datasets = await asyncio.to_thread(
-                self.kaggle_api.datasets_list,
+                self.kaggle_api.dataset_list,
                 search=query,
                 sort_by="relevance",
                 max_size=None,
                 file_type=None,
                 license_name=None,
-                page_size=max_results
-                )
-
+                tag_ids=None
+            )
+            
             # Extract dataset information
             results = []
             for dataset in datasets:
@@ -82,7 +84,7 @@ class DatasetTools:
                     "last_updated": dataset.lastUpdated,
                     "download_count": dataset.downloadCount
                 })
-
+            
             logger.info(f"Found {len(results)} Kaggle datasets for query: {query}")
             return results[:max_results]
         
@@ -91,23 +93,24 @@ class DatasetTools:
             return []
     
     async def search_huggingface_datasets(self, query: str, max_results: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Search HuggingFace datasets based on a query.
+        """Search for datasets on HuggingFace.
+        
         Args:
             query: The search query.
-            max_results: The maximum number of results to
-
-            Returns:
-            List of HuggingFace datasets matching the query.
+            max_results: Optional maximum number of results to return.
+            
+        Returns:
+            List of dataset information dictionaries.
         """
-
         max_results = max_results or self.max_results_per_source
-
-        if not self.huggingface_api_available:
-            logger.warning("HuggingFace API is not available. Skipping HuggingFace dataset search.")
+        
+        if not self.huggingface_available:
+            logger.warning("HuggingFace API not available")
             return []
+        
         try:
-            logger.info(f"Searching HuggingFace datasets for query: {query}")
-
+            logger.info(f"Searching HuggingFace for datasets: {query}")
+            
             # Search HuggingFace API
             headers = {}
             if self.huggingface_api_key:
@@ -141,19 +144,19 @@ class DatasetTools:
         except Exception as e:
             logger.error(f"Error searching HuggingFace datasets: {e}")
             return []
+    
+    async def search_github_datasets(self, query: str, max_results: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Search for datasets on GitHub.
         
-    async def search_datasets(self, query: str, max_results: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Search datasets from multiple sources based on a query.
         Args:
             query: The search query.
-            max_results: The maximum number of results to return.
-
-            Returns:
-            List of datasets matching the query.
+            max_results: Optional maximum number of results to return.
+            
+        Returns:
+            List of dataset information dictionaries.
         """
-
         max_results = max_results or self.max_results_per_source
-
+        
         try:
             logger.info(f"Searching GitHub for datasets: {query}")
             
@@ -199,6 +202,9 @@ class DatasetTools:
         Returns:
             Dictionary mapping source names to lists of dataset information.
         """
+        # Use default sources if none provided
+        sources = sources or self.sources
+        
         # Filter unavailable sources
         available_sources = []
         if "kaggle" in sources and self.kaggle_available:
@@ -216,45 +222,35 @@ class DatasetTools:
         results = {}
         
         search_coroutines = []
+        source_names = []
         
         # Add search coroutines for each source
         if "kaggle" in sources:
             search_coroutines.append(self.search_kaggle_datasets(query))
+            source_names.append("kaggle")
         
         if "huggingface" in sources:
             search_coroutines.append(self.search_huggingface_datasets(query))
+            source_names.append("huggingface")
         
         if "github" in sources:
             search_coroutines.append(self.search_github_datasets(query))
+            source_names.append("github")
+        
+        if not search_coroutines:
+            return {}
         
         # Run searches in parallel
         all_results = await asyncio.gather(*search_coroutines, return_exceptions=True)
         
         # Process results
-        result_index = 0
-        if "kaggle" in sources:
-            if isinstance(all_results[result_index], Exception):
-                logger.error(f"Error searching Kaggle: {all_results[result_index]}")
-                results["kaggle"] = []
-            else:
-                results["kaggle"] = all_results[result_index]
-            result_index += 1
-        
-        if "huggingface" in sources:
-            if isinstance(all_results[result_index], Exception):
-                logger.error(f"Error searching HuggingFace: {all_results[result_index]}")
-                results["huggingface"] = []
-            else:
-                results["huggingface"] = all_results[result_index]
-            result_index += 1
-        
-        if "github" in sources:
-            if isinstance(all_results[result_index], Exception):
-                logger.error(f"Error searching GitHub: {all_results[result_index]}")
-                results["github"] = []
-            else:
-                results["github"] = all_results[result_index]
-            result_index += 1
+        for i, source in enumerate(source_names):
+            if i < len(all_results):
+                if isinstance(all_results[i], Exception):
+                    logger.error(f"Error searching {source}: {all_results[i]}")
+                    results[source] = []
+                else:
+                    results[source] = all_results[i]
         
         return results
     
@@ -267,34 +263,59 @@ class DatasetTools:
         Returns:
             List of relevant datasets.
         """
+        if not use_case:
+            logger.warning("Empty use case provided to find_datasets_for_use_case")
+            return []
+            
         title = use_case.get("title", "")
         description = use_case.get("description", "")
         
-        # Generate search queries based on use case
-        queries = [
-            title,
-            f"{title} dataset",
-            f"{title} machine learning"
-        ]
+        if not title and not description:
+            logger.warning("Use case has no title or description")
+            return []
         
-        if "industry" in use_case:
+        # Generate search queries based on use case
+        queries = []
+        if title:
+            queries.extend([
+                title,
+                f"{title} dataset",
+                f"{title} machine learning"
+            ])
+        
+        if "industry" in use_case and use_case["industry"]:
             queries.append(f"{use_case['industry']} {title} dataset")
         
-        if "keywords" in use_case and isinstance(use_case["keywords"], list):
+        if "keywords" in use_case and isinstance(use_case["keywords"], list) and use_case["keywords"]:
             for keyword in use_case["keywords"][:2]:  # Limit to top 2 keywords
-                queries.append(f"{keyword} dataset")
+                if keyword:
+                    queries.append(f"{keyword} dataset")
+        
+        # Ensure we have at least one query
+        if not queries:
+            logger.warning("No valid search queries could be generated for the use case")
+            return []
         
         # Search for datasets using each query
         all_datasets = []
         for query in queries:
-            source_results = await self.search_datasets(query)
-            
-            # Flatten results from all sources
-            for source, datasets in source_results.items():
-                for dataset in datasets:
-                    # Add the query that found this dataset
-                    dataset["query"] = query
-                    all_datasets.append(dataset)
+            try:
+                source_results = await self.search_datasets(query)
+                
+                # Flatten results from all sources (handle case where source_results is None)
+                if not source_results:
+                    continue
+                    
+                for source, datasets in source_results.items():
+                    if not datasets:
+                        continue
+                        
+                    for dataset in datasets:
+                        # Add the query that found this dataset
+                        dataset["query"] = query
+                        all_datasets.append(dataset)
+            except Exception as e:
+                logger.error(f"Error searching datasets for query '{query}': {e}")
         
         # Deduplicate datasets based on URL
         unique_datasets = {}

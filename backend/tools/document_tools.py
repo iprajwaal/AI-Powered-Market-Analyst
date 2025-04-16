@@ -117,7 +117,7 @@ class DocumentTools:
 
             {benefits_text}
             {resources_text}
-"""
+            """
             use_case_sections.append(section)
         
         # Combine all sections

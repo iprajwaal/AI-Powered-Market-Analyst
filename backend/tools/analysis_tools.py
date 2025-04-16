@@ -1,35 +1,36 @@
 import logging
-from typing import Dict, List, Optional, Any, Union
+from typing import List, Dict, Any, Optional
 
 from models.llm_interface import LLMInterface
 
 logger = logging.getLogger(__name__)
 
 class AnalysisTools:
-    """Tool for analyzing and generating insights from data."""
-
+    """Tools for analyzing information and generating insights."""
+    
     def __init__(self, llm: LLMInterface):
-        """Initialize the AnalysisTools tool.
-
+        """Initialize the analysis tools.
+        
         Args:
-            llm: The LLMInterface instance to use for analysis.
+            llm: LLM interface for generating analysis.
         """
         self.llm = llm
-
-    async def extract_use_cases(self,
-                                company_info: Dict[str, Any],
-                                industry_info: Dict[str, Any],
-                                num_use_cases: int = 5) -> List[str]:
+    
+    async def extract_use_cases(self, 
+                              company_info: Dict[str, Any], 
+                              industry_info: Dict[str, Any], 
+                              num_use_cases: int = 5) -> List[Dict[str, Any]]:
         """Extract potential AI use cases from company and industry information.
+        
         Args:
             company_info: Information about the company.
             industry_info: Information about the industry.
-            num_use_cases: Number of use cases to extract.
+            num_use_cases: Number of use cases to generate.
+            
         Returns:
-            List of potential AI use cases.
+            List of use case dictionaries.
         """
-
-        # Define the JASON schema for the use case extraction
+        # Define the JSON schema for use cases
         use_case_schema = {
             "type": "object",
             "properties": {
@@ -39,30 +40,30 @@ class AnalysisTools:
                         "type": "object",
                         "properties": {
                             "title": {"type": "string"},
-                            "discription": {"type": "string"},
-                            "business_value": {"type": "number"},
-                            "implementation_complexity": {"type": "string", "enum": ["low", "medium", "high"]},
-                            "ai_technology": {"type": "string", "items": {"type": "string"}},
+                            "description": {"type": "string"},
+                            "business_value": {"type": "string"},
+                            "implementation_complexity": {"type": "string", "enum": ["Low", "Medium", "High"]},
+                            "ai_technologies": {"type": "array", "items": {"type": "string"}},
                             "industry": {"type": "string"},
                             "keywords": {"type": "array", "items": {"type": "string"}},
-                            "cross_functionl_benfits":{
+                            "cross_functional_benefits": {
                                 "type": "array",
                                 "items": {
-                                    "type": "object",
+                                    "type": "object", 
                                     "properties": {
                                         "department": {"type": "string"},
-                                        "benefits": {"type": "string"}
+                                        "benefit": {"type": "string"}
                                     }
                                 }
                             }
                         },
-                        "required": ["title", "discription", "business_value", "implementation_complexity", "ai_technology"]
+                        "required": ["title", "description", "business_value", "implementation_complexity", "ai_technologies"]
                     }
                 }
             },
             "required": ["use_cases"]
         }
-
+        
         # Create the prompt for use case extraction
         prompt = f"""
         You are an AI expert in Analyze the following information about a company and its industry to identify potential AI and GenAI use cases:
@@ -115,7 +116,7 @@ class AnalysisTools:
         except Exception as e:
             logger.error(f"Error extracting use cases: {e}")
             return []
-
+    
     async def prioritize_use_cases(self, use_cases: List[Dict[str, Any]], company_info: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Prioritize use cases based on company needs and implementation feasibility.
         
@@ -214,4 +215,4 @@ class AnalysisTools:
         
         except Exception as e:
             logger.error(f"Error prioritizing use cases: {e}")
-            return use_cases  # Return original use cases if prioritization fails        
+            return use_cases  # Return original use cases if prioritization fails

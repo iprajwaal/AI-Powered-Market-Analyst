@@ -11,16 +11,16 @@ class IndustryResearchAgent:
 
     def __init__(self, llm: LLMInterface, search_tools: SearchTools):
         """Initialize the industry research agent.
-
+        
         Args:
-            llm: Language model interface.
+            llm: LLM interface for generating analysis.
             search_tools: Tools for searching the web.
         """
         self.llm = llm
         self.search_tools = search_tools
-
-    async def research(self,
-                    company_name: Optional[str] = None,
+    
+    async def research(self, 
+                    company_name: Optional[str] = None, 
                     industry_name: Optional[str] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Research a company and its industry.
         
@@ -31,36 +31,35 @@ class IndustryResearchAgent:
         Returns:
             Tuple containing company information and industry information dictionaries.
         """
-        logging.info(f"Researching company: {company_name} in industry: {industry_name}")
-
+        logger.info(f"Researching company: {company_name}, industry: {industry_name}")
+        
         company_info = {}
         industry_info = {}
-
+        
         # Research company if provided
         if company_name:
-            company_info = await self.search_tools.research_company(company_name)
-
-            # If industry is not provided, try to extract it from company info
+            company_info = await self.search_tools.search_company_info(company_name)
+            
+            # If industry not provided, extract it from company info
             if not industry_name and company_info.get("industry"):
                 industry_name = company_info.get("industry")
-
-        # Research industry if provided
+        
+        # Research industry if available
         if industry_name:
-            industry_info = await self.search_tools.research_industry(industry_name)
-
-        # Enhance research with additional information
+            industry_info = await self.search_tools.search_industry_info(industry_name)
+        
+        # Enhance research with additional insights
         await self._enhance_research(company_info, industry_info)
-
+        
         return company_info, industry_info
     
     async def _enhance_research(self, company_info: Dict[str, Any], industry_info: Dict[str, Any]) -> None:
-        """Enhance research with additional information.
-
+        """Enhance research with additional insights using the LLM.
+        
         Args:
-            company_info: Dictionary containing company information.
-            industry_info: Dictionary containing industry information.
+            company_info: Information about the company.
+            industry_info: Information about the industry.
         """
-        # Enhance company information
         # Skip if no information is available
         if not company_info and not industry_info:
             return

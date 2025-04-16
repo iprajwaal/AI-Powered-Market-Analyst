@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional, List
+from typing import List, Dict, Any, Optional
 
 from models.llm_interface import LLMInterface
 from tools.dataset_tools import DatasetTools
@@ -11,14 +11,14 @@ class ResourceCollectionAgent:
 
     def __init__(self, llm: LLMInterface, dataset_tools: DatasetTools):
         """Initialize the resource collection agent.
-
+        
         Args:
             llm: Language model interface.
             dataset_tools: Tools for collecting datasets and resources.
         """
         self.llm = llm
         self.dataset_tools = dataset_tools
-
+    
     async def collect_resources(self, use_cases: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """Collect implementation resources for an AI use case.
 
@@ -28,14 +28,14 @@ class ResourceCollectionAgent:
         Returns:
             Dictionary mapping use case titles to lists of resources.
         """
-        if not use_case:
+        if not use_cases:
             return {}
         
         logger.info(f"Collecting resources for {len(use_cases)} use cases")
-
-        # Initialze results
+        
+        # Initialize results
         resources = {}
-
+        
         # Process each use case in sequence
         for use_case in use_cases:
             title = use_case.get("title", "")
@@ -46,33 +46,35 @@ class ResourceCollectionAgent:
 
             # Find datasets for the use case
             use_case_resources = await self.dataset_tools.find_datasets_for_use_case(use_case)
-
-            # Store the resources in the dictionary
+            
+            # Store resources
             resources[title] = use_case_resources
+            
             logger.info(f"Found {len(use_case_resources)} resources for use case: {title}")
-
-        # Evaluate the results
-        await self._evevaluate_resources_relevance(resources, use_cases)
+        
+        # Evaluate resource relevance
+        await self._evaluate_resource_relevance(resources, use_cases)
+        
         return resources
     
-    async def _evaluate_resources_relevance(self, 
-                                        resources: Dict[str, List[Dict[str, Any]]], 
-                                        use_cases: List[Dict[str, Any]]) -> None:
+    async def _evaluate_resource_relevance(self, 
+                                      resources: Dict[str, List[Dict[str, Any]]], 
+                                      use_cases: List[Dict[str, Any]]) -> None:
+        """Evaluate the relevance of resources for each use case.
         
-        """Evaluate the relevance of collected resources to the use cases.
         Args:
             resources: Dictionary mapping use case titles to lists of resources.
             use_cases: List of use case dictionaries.
         """
         for use_case in use_cases:
             title = use_case.get("title", "")
-            if not title:
+            if not title or title not in resources:
                 continue
-
-            use_case_resources = resources(title)
+            
+            use_case_resources = resources[title]
             if not use_case_resources:
                 continue
-
+            
             # Define JSON schema for relevance evaluation
             relevance_schema = {
                 "type": "object",
