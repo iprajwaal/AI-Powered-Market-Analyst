@@ -10,6 +10,10 @@ __pycache__/
 credentials
 credentials/
 
+outputs
+outputs/
+
+
 # .DS_Store 
 .DS_Store
 .DS_Store/
