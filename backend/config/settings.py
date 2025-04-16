@@ -1,23 +1,23 @@
 import os
 from pathlib import Path
+from typing import Dict, Any
 from dotenv import load_dotenv
-from typing import List, Dict, Any
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Base directory of the project
+# Base directories
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-#API Keys and secrets
+# API Keys and secrets
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 KAGGLE_USERNAME = os.getenv("KAGGLE_USERNAME")
 KAGGLE_KEY = os.getenv("KAGGLE_KEY")
-HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
 
 # LLM Configuration
 LLM_CONFIG = {
@@ -36,7 +36,6 @@ SEARCH_CONFIG = {
     "timeout": int(os.getenv("SEARCH_TIMEOUT", "30")),
 }
 
-# Dataset configurations
 DATASET_CONFIG = {
     "sources": ["kaggle", "huggingface", "github"],
     "max_results_per_source": int(os.getenv("DATASET_MAX_RESULTS", "5")),
@@ -56,10 +55,12 @@ API_CONFIG = {
     "debug": os.getenv("API_DEBUG", "False").lower() == "true",
 }
 
-
 # Monitoring configurations
 MONITORING_CONFIG = {
     "enabled": False,
     "langfuse_host": os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
 }
 
+# Logging configurations
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_FILE = os.getenv("LOG_FILE", "app.log")
