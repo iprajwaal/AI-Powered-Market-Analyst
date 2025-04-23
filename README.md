@@ -9,7 +9,7 @@
 - **Industry & Company Research**: Automatically researches companies and industries using web search
 - **AI Use Case Generation**: Creates tailored AI/ML implementation strategies with business value analysis
 - **Resource Discovery**: Finds relevant datasets and implementation resources from Kaggle, HuggingFace, and GitHub
-- **Structured Reasoning**: Uses DSPy for enhanced chain-of-thought reasoning and structured outputs
+- **Structured Reasoning**: Uses enhanced chain-of-thought reasoning and structured outputs
 - **Full-Stack Implementation**: Includes a FastAPI backend and React/Next.js frontend
 
 ## 🛠️ Project Structure
