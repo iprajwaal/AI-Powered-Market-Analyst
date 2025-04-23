@@ -13,6 +13,8 @@ credentials/
 outputs
 outputs/
 
+logs
+logs/
 
 # .DS_Store 
 .DS_Store
