@@ -1,6 +1,6 @@
 # 💹 AI-Powered Market Analyst
 
-> AI Market Analyst is a multi-agent system that uses advanced LLMs to research companies and industries, generate tailored AI use cases, and provide implementation resources. The system leverages DSPy, LangChain, and LangGraph to create a sophisticated analysis pipeline with web-grounded information.
+> AI Market Analyst is a multi-agent system that uses advanced LLMs to research companies and industries, generate tailored AI use cases, and provide implementation resources. The system leverages LangChain, and LangGraph to create a sophisticated analysis pipeline with web-grounded information.
 
 ![Project Overview](https://github.com/user-attachments/assets/c8b693af-7555-4884-89bb-203bf9517dfa)
 
