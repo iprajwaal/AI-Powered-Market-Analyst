@@ -1,17 +1,17 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export async function startAnalysis(request) {
   const response = await fetch(`${API_URL}/api/analyze`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(request),
   });
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'Failed to start analysis');
+    throw new Error(error.detail || "Failed to start analysis");
   }
 
   return response.json();
@@ -22,7 +22,7 @@ export async function getAnalysis(requestId) {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'Failed to get analysis');
+    throw new Error(error.detail || "Failed to get analysis");
   }
 
   return response.json();
@@ -33,7 +33,7 @@ export async function getMarkdown(requestId) {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'Failed to get markdown');
+    throw new Error(error.detail || "Failed to get markdown");
   }
 
   return response.json();

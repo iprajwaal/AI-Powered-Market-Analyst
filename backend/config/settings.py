@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env file

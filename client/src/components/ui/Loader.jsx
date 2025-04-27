@@ -1,10 +1,10 @@
-import React from 'react';
+import React from "react";
 
-export default function Loader({ size = 'medium', message }) {
+export default function Loader({ size = "medium", message }) {
   const sizeClasses = {
-    small: 'h-4 w-4',
-    medium: 'h-8 w-8',
-    large: 'h-12 w-12',
+    small: "h-4 w-4",
+    medium: "h-8 w-8",
+    large: "h-12 w-12",
   };
 
   return (

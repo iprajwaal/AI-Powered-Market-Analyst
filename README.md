@@ -106,12 +106,14 @@ AI-Powered-Market-Analyst/
 ### Backend Setup
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/iprajwaal/AI-Powered-Market-Analyst.git
    cd AI-Powered-Market-Analyst
    ```
 
 2. Set up a virtual environment:
+
    ```bash
    cd backend
    python -m venv .venv
@@ -119,6 +121,7 @@ AI-Powered-Market-Analyst/
    ```
 
 3. Install dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -134,16 +137,19 @@ AI-Powered-Market-Analyst/
 This project uses API keys for Google Cloud Platform (GCP), Gemini, and SERP API. Store these securely.
 
 1. **Create a `credentials` folder in the project root:**
+
    ```bash
    mkdir credentials
    ```
 
 2. **Gemini API Key:**
+
    - Visit the [Google AI Studio](https://makersuite.google.com/app/apikey)
    - Create a new API key
    - Save this key in your `.env` file
 
 3. **SERP API Credentials:**
+
    - Sign up for a [SERP API](https://serpapi.com/) account
    - Obtain your API key from the dashboard
    - Create a file named `api.yml` inside the `credentials` folder:
@@ -153,36 +159,40 @@ This project uses API keys for Google Cloud Platform (GCP), Gemini, and SERP API
      ```
 
 4. **Kaggle API Credentials (Optional):**
+
    - Create a Kaggle account if you don't have one
    - Go to your account settings and create a new API token
    - Download the `kaggle.json` file and place it in the `credentials` folder
 
 5. **Create `.env` file:**
-    ```
-    # API Keys
-    GEMINI_API_KEY=your_gemini_api_key
-    SERPAPI_KEY=your_serpapi_key
-    KAGGLE_USERNAME=your_kaggle_username
-    KAGGLE_KEY=your_kaggle_key
-    HUGGINGFACE_API_KEY=your_huggingface_api_key
 
-    # Optional Langfuse Monitoring
-    LANGFUSE_PUBLIC_KEY=pk-lf-your_langfuse_public_key
-    LANGFUSE_SECRET_KEY=sk-lf-your_langfuse_secret_key
+   ```
+   # API Keys
+   GEMINI_API_KEY=your_gemini_api_key
+   SERPAPI_KEY=your_serpapi_key
+   KAGGLE_USERNAME=your_kaggle_username
+   KAGGLE_KEY=your_kaggle_key
+   HUGGINGFACE_API_KEY=your_huggingface_api_key
 
-    # LLM Configuration
-    LLM_PROVIDER=llm_provider
-    LLM_MODEL=llm_model
-    ```
+   # Optional Langfuse Monitoring
+   LANGFUSE_PUBLIC_KEY=pk-lf-your_langfuse_public_key
+   LANGFUSE_SECRET_KEY=sk-lf-your_langfuse_secret_key
+
+   # LLM Configuration
+   LLM_PROVIDER=llm_provider
+   LLM_MODEL=llm_model
+   ```
 
 ### Frontend Setup
 
 1. Navigate to the frontend directory:
+
    ```bash
    cd ../frontend
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    ```
@@ -243,7 +253,9 @@ The application will be available at http://localhost:3000.
 - **Tailwind CSS**: Utility-first CSS framework for styling
 
 ## Contributing
+
 We welcome contributions! Please follow these steps:
+
 1. Fork the repository
 2. Create a new branch for your feature or bug fix
 3. Make your changes and commit them
